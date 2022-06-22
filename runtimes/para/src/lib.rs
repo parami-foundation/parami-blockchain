@@ -1367,6 +1367,7 @@ impl parami_did::Config for Runtime {
     type DecentralizedId = DecentralizedId;
     type Hashing = Keccak256;
     type WeightInfo = parami_did::weights::SubstrateWeight<Runtime>;
+    type Nfts = Nft;
 }
 
 parameter_types! {
