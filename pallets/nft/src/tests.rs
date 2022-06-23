@@ -569,7 +569,7 @@ fn should_transfer_all_assets() {
         assert_eq!(Assets::balance(0, &BOB), 0);
         assert_eq!(Assets::balance(1, &BOB), 0);
 
-        assert_ok!(Nft::force_transfer_all_assets(&ALICE, &BOB));
+        assert_ok!(Nft::force_transfer_all_fractions(&ALICE, &BOB));
 
         assert_eq!(Assets::balance(0, &ALICE), 0);
         assert_eq!(Assets::balance(1, &ALICE), 0);

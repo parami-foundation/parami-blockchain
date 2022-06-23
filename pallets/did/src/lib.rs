@@ -165,7 +165,7 @@ pub mod pallet {
         }
 
         #[pallet::weight(T::WeightInfo::transfer())]
-        pub fn force_transfer(
+        pub fn force_transfer_with_assets(
             origin: OriginFor<T>,
             did: T::DecentralizedId,
             dest: AccountOf<T>,
@@ -181,7 +181,7 @@ pub mod pallet {
 
             let ad3_balance = T::Currency::total_balance(&source);
             T::Currency::transfer(&source, &dest, ad3_balance, AllowDeath)?;
-            T::Nfts::force_transfer_all_assets(&source, &dest)?;
+            T::Nfts::force_transfer_all_fractions(&source, &dest)?;
 
             <Metadata<T>>::insert(did, meta);
             <DidOf<T>>::remove(&source);

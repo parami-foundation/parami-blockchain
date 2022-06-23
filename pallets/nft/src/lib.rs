@@ -684,7 +684,7 @@ impl<T: Config> Pallet<T> {
 }
 
 impl<T: Config> Nfts<T::AccountId> for Pallet<T> {
-    fn force_transfer_all_assets(
+    fn force_transfer_all_fractions(
         src: &T::AccountId,
         dest: &T::AccountId,
     ) -> Result<(), DispatchError> {

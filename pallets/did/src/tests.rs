@@ -200,7 +200,11 @@ fn should_force_transfer_did() {
         assert_eq!(Did::did_of(ALICE).unwrap(), DID_ALICE);
         assert_eq!(Did::did_of(BOB), None);
 
-        assert_ok!(Did::force_transfer(Origin::root(), DID_ALICE, BOB));
+        assert_ok!(Did::force_transfer_with_assets(
+            Origin::root(),
+            DID_ALICE,
+            BOB
+        ));
 
         assert_eq!(<Test as crate::Config>::Currency::total_balance(&ALICE), 0);
         assert_eq!(<Test as crate::Config>::Currency::total_balance(&BOB), 200);
@@ -213,7 +217,7 @@ fn should_force_transfer_did() {
 fn should_fail_force_transfer_did_if_not_root_user() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Did::force_transfer(Origin::signed(ALICE), DID_ALICE, BOB),
+            Did::force_transfer_with_assets(Origin::signed(ALICE), DID_ALICE, BOB),
             DispatchError::BadOrigin
         );
     });
@@ -223,7 +227,7 @@ fn should_fail_force_transfer_did_if_not_root_user() {
 fn should_fail_force_transfer_did_if_did_not_exist() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Did::force_transfer(Origin::root(), DID_BOB, BOB),
+            Did::force_transfer_with_assets(Origin::root(), DID_BOB, BOB),
             Error::<Test>::DidNotExists,
         );
     });
@@ -234,7 +238,7 @@ fn should_fail_force_transfer_did_if_dest_bind_did() {
     new_test_ext().execute_with(|| {
         assert_ok!(Did::register(Origin::signed(BOB), None));
         assert_noop!(
-            Did::force_transfer(Origin::root(), DID_ALICE, BOB),
+            Did::force_transfer_with_assets(Origin::root(), DID_ALICE, BOB),
             Error::<Test>::DidExists,
         );
     });
