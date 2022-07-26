@@ -1,7 +1,7 @@
 use codec::Codec;
 use jsonrpsee::{
     core::{async_trait, Error, RpcResult},
-    proc_macros::rpc,
+    proc_macros::{rpc},
     types::error::{CallError, ErrorObject, INTERNAL_ERROR_CODE},
 };
 use parami_primitives::BalanceWrapper;
