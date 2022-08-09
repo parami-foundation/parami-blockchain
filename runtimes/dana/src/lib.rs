@@ -103,7 +103,10 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    AddResouceId2Asset<Runtime>,
+    (
+        AddResouceId2Asset<Runtime>,
+        crate::migrations::TransferOwnership<Runtime>,
+    ),
 >;
 
 /// Era type as expected by this runtime.
