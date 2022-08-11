@@ -49,7 +49,6 @@ pub mod v2 {
                 return 0;
             }
 
-            StorageVersion::put::<Pallet<T>>(&StorageVersion::new(2));
             Metadata::<T>::translate_values(|m| {
                 Some(MetaOf::<T> {
                     created: 0u32.into(),
@@ -57,16 +56,35 @@ pub mod v2 {
                 })
             });
 
+            StorageVersion::put::<Pallet<T>>(&StorageVersion::new(2));
+
             1
         }
 
         #[cfg(feature = "try-runtime")]
         fn pre_upgrade() -> Result<(), &'static str> {
+            use frame_support::log::info;
+
+            let count: u32 = Metadata::<T>::iter_values()
+                .filter(|m| m.created != 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("non zero meta count = {:?}", count);
+
             Ok(())
         }
 
         #[cfg(feature = "try-runtime")]
         fn post_upgrade() -> Result<(), &'static str> {
+            use frame_support::log::info;
+
+            let count: u32 = Metadata::<T>::iter_values()
+                .filter(|m| m.created == 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("zero meta count = {:?}", count);
             Ok(())
         }
     }

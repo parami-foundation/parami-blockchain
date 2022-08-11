@@ -21,8 +21,6 @@ pub mod v1 {
                 return 0;
             }
 
-            StorageVersion::put::<Pallet<T>>(&StorageVersion::new(1));
-
             for (account, asset, _claimed_at) in Account::<T>::iter() {
                 let result = <Pallet<T> as Swaps<AccountOf<T>>>::burn(
                     account,
@@ -33,16 +31,25 @@ pub mod v1 {
                 assert_ok!(result);
             }
 
+            StorageVersion::put::<Pallet<T>>(&StorageVersion::new(1));
             1
         }
 
         #[cfg(feature = "try-runtime")]
         fn pre_upgrade() -> Result<(), &'static str> {
+            use frame_support::log::info;
+
+            let count = Account::<T>::iter().count();
+            info!("accounts: {:?}", count);
+
             Ok(())
         }
 
         #[cfg(feature = "try-runtime")]
         fn post_upgrade() -> Result<(), &'static str> {
+            let count = Account::<T>::iter().count();
+            assert_eq!(count, 0);
+
             Ok(())
         }
     }

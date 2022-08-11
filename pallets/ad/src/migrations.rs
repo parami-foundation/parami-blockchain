@@ -26,8 +26,6 @@ pub mod v4 {
                 return 0;
             }
 
-            StorageVersion::put::<Pallet<T>>(&StorageVersion::new(4));
-
             Payout::<T>::translate_values(|_h: HeightOf<T>| Some(0u32.into()));
             DeadlineOf::<T>::translate_values(|_h: HeightOf<T>| Some(0u32.into()));
             EndtimeOf::<T>::translate_values(|_h: HeightOf<T>| Some(0u32.into()));
@@ -44,16 +42,86 @@ pub mod v4 {
                 })
             });
 
+            StorageVersion::put::<Pallet<T>>(&StorageVersion::new(4));
+
             1
         }
 
         #[cfg(feature = "try-runtime")]
         fn pre_upgrade() -> Result<(), &'static str> {
+            use frame_support::log::info;
+
+            let count: u32 = Payout::<T>::iter_values()
+                .filter(|m| *m != 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("non zero payout count = {:?}", count);
+
+            let count: u32 = DeadlineOf::<T>::iter_values()
+                .filter(|m| *m != 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("non zero deadline count = {:?}", count);
+            let count: u32 = EndtimeOf::<T>::iter_values()
+                .filter(|m| *m != 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("non zero endtime count = {:?}", count);
+            let count: u32 = Metadata::<T>::iter_values()
+                .filter(|m| m.created != 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("non zero meta count = {:?}", count);
+            let count: u32 = SlotOf::<T>::iter_values()
+                .filter(|m| m.created != 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("non zero slot count = {:?}", count);
+
             Ok(())
         }
 
         #[cfg(feature = "try-runtime")]
         fn post_upgrade() -> Result<(), &'static str> {
+            use frame_support::log::info;
+
+            let count: u32 = Payout::<T>::iter_values()
+                .filter(|m| *m == 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("zero payout count = {:?}", count);
+
+            let count: u32 = DeadlineOf::<T>::iter_values()
+                .filter(|m| *m == 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("zero deadline count = {:?}", count);
+            let count: u32 = EndtimeOf::<T>::iter_values()
+                .filter(|m| *m == 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("zero endtime count = {:?}", count);
+            let count: u32 = Metadata::<T>::iter_values()
+                .filter(|m| m.created == 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("zero meta count = {:?}", count);
+            let count: u32 = SlotOf::<T>::iter_values()
+                .filter(|m| m.created == 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+
+            info!("zero slot count = {:?}", count);
+
             Ok(())
         }
     }

@@ -56,20 +56,34 @@ pub mod v3 {
                 return 0;
             }
 
-            StorageVersion::put::<Pallet<T>>(&StorageVersion::new(3));
-
             Date::<T>::translate_values(|_d: HeightOf<T>| Some(0u32.into()));
+
+            StorageVersion::put::<Pallet<T>>(&StorageVersion::new(3));
 
             1
         }
 
         #[cfg(feature = "try-runtime")]
         fn pre_upgrade() -> Result<(), &'static str> {
+            use frame_support::log::info;
+            let count: u32 = Date::<T>::iter_values()
+                .filter(|m| *m != 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+            info!("non zero date count = {:?}", count);
+
             Ok(())
         }
 
         #[cfg(feature = "try-runtime")]
         fn post_upgrade() -> Result<(), &'static str> {
+            use frame_support::log::info;
+            let count: u32 = Date::<T>::iter_values()
+                .filter(|m| *m == 0u32.into())
+                .map(|_| 1u32)
+                .sum();
+            info!("zero date count = {:?}", count);
+
             Ok(())
         }
     }
