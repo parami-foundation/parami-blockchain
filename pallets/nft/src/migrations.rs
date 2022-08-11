@@ -1,10 +1,10 @@
 use crate::{Config, Pallet};
+use crate::{Date, StorageVersion};
+use frame_support::traits::OnRuntimeUpgrade;
 use frame_support::{traits::PalletInfoAccess, weights::Weight};
 use sp_runtime::traits::Saturating;
 
 pub fn migrate<T: Config>() -> Weight {
-    use frame_support::traits::StorageVersion;
-
     let version = StorageVersion::get::<Pallet<T>>();
     let mut weight: Weight = 0;
 
@@ -39,5 +39,38 @@ mod v2 {
         );
 
         Weight::max_value()
+    }
+}
+
+pub mod v3 {
+    use crate::HeightOf;
+
+    use super::*;
+
+    pub struct ResetHeight<T>(sp_std::marker::PhantomData<T>);
+
+    impl<T: crate::Config> OnRuntimeUpgrade for ResetHeight<T> {
+        fn on_runtime_upgrade() -> Weight {
+            let version = StorageVersion::get::<Pallet<T>>();
+            if version != 2 {
+                return 0;
+            }
+
+            StorageVersion::put::<Pallet<T>>(&StorageVersion::new(3));
+
+            Date::<T>::translate_values(|_d: HeightOf<T>| Some(0u32.into()));
+
+            1
+        }
+
+        #[cfg(feature = "try-runtime")]
+        fn pre_upgrade() -> Result<(), &'static str> {
+            Ok(())
+        }
+
+        #[cfg(feature = "try-runtime")]
+        fn post_upgrade() -> Result<(), &'static str> {
+            Ok(())
+        }
     }
 }

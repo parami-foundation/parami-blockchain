@@ -103,7 +103,14 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    AddResouceId2Asset<Runtime>,
+    (
+        AddResouceId2Asset<Runtime>,
+        parami_ad::migrations::v4::ResetHeight<Runtime>,
+        parami_did::migrations::v2::ResetHeight<Runtime>,
+        parami_nft::migrations::v3::ResetHeight<Runtime>,
+        parami_tag::migrations::v2::ResetHeight<Runtime>,
+        parami_swap::migrations::v1::ResetHeight<Runtime>,
+    ),
 >;
 
 /// Era type as expected by this runtime.
