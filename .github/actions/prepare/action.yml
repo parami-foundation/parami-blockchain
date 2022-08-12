@@ -22,3 +22,4 @@ runs:
         rustup update nightly
         rustup target add wasm32-unknown-unknown --toolchain nightly
       shell: bash
+    - uses: Swatinem/rust-cache@v2
