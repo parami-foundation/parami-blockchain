@@ -23,3 +23,5 @@ runs:
         rustup target add wasm32-unknown-unknown --toolchain nightly
       shell: bash
     - uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "parami-blockchain-build"
