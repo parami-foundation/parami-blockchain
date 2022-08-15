@@ -10,6 +10,7 @@ use codec::{Decode, Encode};
 pub use frame_system::Call as SystemCall;
 pub use pallet_balances::Call as BalancesCall;
 pub use pallet_timestamp::Call as TimestampCall;
+use parami_assetmanager::AssetIdManager;
 use sp_api::impl_runtime_apis;
 pub use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
@@ -61,10 +62,12 @@ pub use parami_primitives::{
         NORMAL_DISPATCH_RATIO, SLOT_DURATION,
     },
     deposit, names, AccountId, Address, AssetId, Balance, BalanceWrapper, BlockNumber,
-    DecentralizedId, Hash, Header, Index, Moment, Signature,
+    DecentralizedId, Hash, Header, Index, Moment, NftId, Signature,
 };
 use parami_swap::LinearFarmingCurve;
+use parami_traits::Nfts;
 use parami_traits::Swaps;
+use parami_xassets::migrations::v1::AddResouceId2Asset;
 
 mod migrations;
 
@@ -101,7 +104,7 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    (crate::migrations::RemoveDeprecatedPallets),
+    (parami_swap::migrations::v2::ResetHeight<Runtime>,),
 >;
 
 /// Era type as expected by this runtime.
@@ -166,7 +169,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("parami"),
     impl_name: create_runtime_str!("parami-node"),
     authoring_version: 20,
-    spec_version: 336,
+    spec_version: 340,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 2,
@@ -783,22 +786,24 @@ impl parami_chainbridge::Config for Runtime {
 parameter_types! {
     // &blake2_128(b"hash")
     // 0x000000000000000000000000000000f44be64d2de895454c3467021928e55ee9
-    pub HashId: parami_chainbridge::ResourceId = parami_chainbridge::derive_resource_id(233, &blake2_128(b"hash"));
+    pub HashResourceId: parami_chainbridge::ResourceId = parami_chainbridge::derive_resource_id(233, &blake2_128(b"hash"));
 
     // &blake2_128(b"AD3")
     // Note: Chain ID is 0 indicating this is native to another chain
     // 0x000000000000000000000000000000a56889c89dddcbb363cbd6a8d11de9e100
-    pub NativeTokenId: parami_chainbridge::ResourceId = parami_chainbridge::derive_resource_id(0, &blake2_128(b"AD3"));
+    pub NativeTokenResourceId: parami_chainbridge::ResourceId = parami_chainbridge::derive_resource_id(0, &blake2_128(b"AD3"));
 }
 
 impl parami_xassets::Config for Runtime {
     type AssetId = AssetId;
+    type AssetIdManager = AssetManager;
     type Event = Event;
     type BridgeOrigin = parami_chainbridge::EnsureBridge<Runtime>;
     type Currency = Balances;
-    type HashId = HashId;
-    type NativeTokenId = NativeTokenId;
+    type HashResourceId = HashResourceId;
+    type NativeTokenResourceId = NativeTokenResourceId;
     type WeightInfo = parami_xassets::weights::SubstrateWeight<Runtime>;
+    type StringLimit = StringLimit;
     type Assets = Assets;
     type ForceOrigin = EnsureRootOrHalfCouncil;
     type PalletId = XAssetPalletId;
@@ -850,6 +855,7 @@ impl parami_nft::Config for Runtime {
     type Event = Event;
     type AssetId = AssetId;
     type Assets = Assets;
+    type AssetIdManager = AssetManager;
     type InitialMintingDeposit = InitialMintingDeposit;
     type InitialMintingLockupPeriod = InitialMintingLockupPeriod;
     type InitialMintingValueBase = InitialMintingValueBase;
@@ -861,6 +867,7 @@ impl parami_nft::Config for Runtime {
     type Swaps = Swap;
     type WeightInfo = parami_nft::weights::SubstrateWeight<Runtime>;
     type UnsignedPriority = UnsignedPriority;
+    type NftId = NftId;
 }
 
 impl parami_ocw::Config for Runtime {}
@@ -892,6 +899,10 @@ impl parami_tag::Config for Runtime {
     type CallOrigin = parami_advertiser::EnsureAdvertiser<Self>;
     type ForceOrigin = EnsureRootOrHalfCouncil;
     type WeightInfo = parami_tag::weights::SubstrateWeight<Runtime>;
+}
+
+impl parami_assetmanager::Config for Runtime {
+    type AssetId = AssetId;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -935,13 +946,14 @@ construct_runtime!(
         Ad: parami_ad::{Pallet, Call, Storage, Config, Event<T>} = 100,
         Advertiser: parami_advertiser::{Pallet, Call, Storage, Config<T>, Event<T>} = 101,
         ChainBridge: parami_chainbridge::{Pallet, Call, Storage, Event<T>} = 102,
-        XAssets: parami_xassets::{Pallet, Call, Event<T>} = 103,
+        XAssets: parami_xassets::{Pallet, Call, Storage, Event<T>} = 103,
         Did: parami_did::{Pallet, Call, Storage, Config<T>, Event<T>} = 104,
         Linker: parami_linker::{Pallet, Call, Storage, Config<T>, Event<T>, ValidateUnsigned} = 105,
         Magic: parami_magic::{Pallet,Storage} = 106,
         Nft: parami_nft::{Pallet, Call, Storage, Config<T>, Event<T>, ValidateUnsigned} = 107,
         Swap: parami_swap::{Pallet, Call, Storage, Config<T>, Event<T>} = 108,
         Tag: parami_tag::{Pallet, Call, Storage, Config<T>, Event<T>} = 109,
+        AssetManager: parami_assetmanager::{Pallet, Storage, Config<T>} = 110
     }
 );
 
@@ -1135,6 +1147,12 @@ impl_runtime_apis! {
         ) -> Result<(), mmr::Error> {
             let nodes = leaves.into_iter().map(|leaf|mmr::DataOrHash::Data(leaf.into_opaque_leaf())).collect();
             pallet_mmr::verify_leaves_proof::<mmr::Hashing, _>(root, nodes, proof)
+        }
+    }
+
+    impl parami_nft_rpc_runtime_api::NftRuntimeApi<Block, NftId, DecentralizedId, Balance> for Runtime {
+        fn get_claim_info(nft_id: NftId, claimer: DecentralizedId) -> Result<(BalanceWrapper<Balance>, BalanceWrapper<Balance>, BalanceWrapper<Balance>), DispatchError> {
+            Nft::get_claim_info(nft_id, &claimer).map(|(total, claimed, claimable)| (total.into(), claimed.into(), claimable.into()))
         }
     }
 

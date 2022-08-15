@@ -51,9 +51,10 @@ pub use parami_primitives::{
         NORMAL_DISPATCH_RATIO, SLOT_DURATION,
     },
     deposit, names, AccountId, Address, AssetId, Balance, BalanceWrapper, BlockNumber,
-    DecentralizedId, Hash, Header, Index, Moment, Signature,
+    DecentralizedId, Hash, Header, Index, Moment, NftId, Signature,
 };
 use parami_swap::LinearFarmingCurve;
+use parami_traits::Nfts;
 use parami_traits::Swaps;
 
 mod voter_bags;
@@ -1505,6 +1506,10 @@ impl parami_chainbridge::Config for Runtime {
     type WeightInfo = parami_chainbridge::weights::SubstrateWeight<Runtime>;
 }
 
+impl parami_assetmanager::Config for Runtime {
+    type AssetId = AssetId;
+}
+
 parameter_types! {
     // &blake2_128(b"hash")
     // 0x000000000000000000000000000000f44be64d2de895454c3467021928e55ee9
@@ -1520,13 +1525,15 @@ parameter_types! {
 
 impl parami_xassets::Config for Runtime {
     type AssetId = AssetId;
+    type AssetIdManager = AssetManager;
     type Event = Event;
     type BridgeOrigin = parami_chainbridge::EnsureBridge<Runtime>;
     type Currency = Balances;
-    type HashId = HashId;
-    type NativeTokenId = NativeTokenId;
+    type HashResourceId = HashId;
+    type NativeTokenResourceId = NativeTokenId;
     type WeightInfo = parami_xassets::weights::SubstrateWeight<Runtime>;
     type Assets = Assets;
+    type StringLimit = StringLimit;
     type ForceOrigin = EnsureRootOrHalfCouncil;
     type PalletId = XAssetPalletId;
 }
@@ -1576,6 +1583,7 @@ impl parami_nft::Config for Runtime {
     type Event = Event;
     type AssetId = AssetId;
     type Assets = Assets;
+    type AssetIdManager = AssetManager;
     type InitialMintingDeposit = InitialMintingDeposit;
     type InitialMintingLockupPeriod = InitialMintingLockupPeriod;
     type InitialMintingValueBase = InitialMintingValueBase;
@@ -1587,6 +1595,7 @@ impl parami_nft::Config for Runtime {
     type Swaps = Swap;
     type WeightInfo = parami_nft::weights::SubstrateWeight<Runtime>;
     type UnsignedPriority = UnsignedPriority;
+    type NftId = NftId;
 }
 
 impl parami_ocw::Config for Runtime {}
@@ -1698,6 +1707,7 @@ construct_runtime!(
         Nft: parami_nft::{Pallet, Call, Storage, Config<T>, Event<T>} = 107,
         Swap: parami_swap::{Pallet, Call, Storage, Config<T>, Event<T>} = 108,
         Tag: parami_tag::{Pallet, Call, Storage, Config<T>, Event<T>} = 109,
+        AssetManager: parami_assetmanager::{Pallet, Storage, Config<T>} = 110
     }
 );
 
@@ -1908,6 +1918,12 @@ impl_runtime_apis! {
         ) -> Result<(), mmr::Error> {
             let nodes = leaves.into_iter().map(|leaf|mmr::DataOrHash::Data(leaf.into_opaque_leaf())).collect();
             pallet_mmr::verify_leaves_proof::<mmr::Hashing, _>(root, nodes, proof)
+        }
+    }
+
+    impl parami_nft_rpc_runtime_api::NftRuntimeApi<Block, NftId, DecentralizedId, Balance> for Runtime {
+        fn get_claim_info(nft_id: NftId, claimer: DecentralizedId) -> Result<(BalanceWrapper<Balance>, BalanceWrapper<Balance>, BalanceWrapper<Balance>), DispatchError> {
+            Nft::get_claim_info(nft_id, &claimer).map(|(total, claimed, claimable)| (total.into(), claimed.into(), claimable.into()))
         }
     }
 

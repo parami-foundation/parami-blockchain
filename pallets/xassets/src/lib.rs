@@ -11,6 +11,8 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+pub mod migrations;
+
 // #[cfg(feature = "runtime-benchmarks")]
 // mod benchmarking;
 use codec::MaxEncodedLen;
@@ -18,15 +20,20 @@ use frame_support::{
     dispatch::DispatchResultWithPostInfo,
     ensure,
     traits::{
-        tokens::fungibles::Transfer as FungTransfer, Currency, EnsureOrigin,
-        ExistenceRequirement::AllowDeath, Get,
+        tokens::fungibles::metadata::Mutate as MetadataMutate,
+        tokens::fungibles::{
+            Create as FungCreate, Inspect, Mutate as FungMutate, Transfer as FungTransfer,
+        },
+        Currency, EnsureOrigin,
+        ExistenceRequirement::AllowDeath,
+        Get,
     },
     PalletId,
 };
 use frame_system::ensure_signed;
 use parami_chainbridge::{ChainId, ResourceId};
 use sp_core::U256;
-use sp_runtime::traits::{AccountIdConversion, SaturatedConversion};
+use sp_runtime::traits::{AccountIdConversion, One, SaturatedConversion};
 use sp_std::prelude::*;
 
 use weights::WeightInfo;
@@ -39,12 +46,19 @@ type AssetOf<T> = <T as Config>::AssetId;
 
 #[frame_support::pallet]
 pub mod pallet {
+
     use super::*;
-    use frame_support::pallet_prelude::*;
+    use frame_support::{
+        pallet_prelude::*,
+        traits::{ExistenceRequirement, WithdrawReasons},
+    };
     use frame_system::pallet_prelude::*;
+    use parami_assetmanager::AssetIdManager;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config + parami_chainbridge::Config {
+    pub trait Config:
+        frame_system::Config + parami_chainbridge::Config + parami_assetmanager::Config
+    {
         /// The overarching event type
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
@@ -57,26 +71,30 @@ pub mod pallet {
         /// The currency mechanism.
         type Currency: Currency<<Self as frame_system::Config>::AccountId>;
 
-        type Assets: FungTransfer<
-            AccountOf<Self>,
-            AssetId = AssetOf<Self>,
-            Balance = BalanceOf<Self>,
-        >;
+        type Assets: FungTransfer<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>
+            + FungMutate<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>
+            + MetadataMutate<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>
+            + FungCreate<AccountOf<Self>, AssetId = AssetOf<Self>>;
 
         #[pallet::constant]
         type PalletId: Get<PalletId>;
 
         type AssetId: Parameter + Member + Default + Copy + MaxEncodedLen;
+        type AssetIdManager: AssetIdManager<Self, AssetId = AssetOf<Self>>;
 
         /// Ids can be defined by the runtime and passed in, perhaps from blake2b_128 hashes.
-        type HashId: Get<ResourceId>;
+        type HashResourceId: Get<ResourceId>;
 
-        type NativeTokenId: Get<ResourceId>;
+        type NativeTokenResourceId: Get<ResourceId>;
 
         /// Weight information for extrinsics in this pallet
         type WeightInfo: WeightInfo;
 
         type ForceOrigin: EnsureOrigin<Self::Origin>;
+
+        /// The maximum length of a name or symbol stored on-chain.
+        #[pallet::constant]
+        type StringLimit: Get<u32>;
     }
 
     #[pallet::pallet]
@@ -97,6 +115,21 @@ pub mod pallet {
     #[pallet::getter(fn bridge_fee)]
     pub type NativeFee<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
+    #[pallet::storage]
+    pub(super) type ResourceId2Asset<T: Config> =
+        StorageMap<_, Twox64Concat, ResourceId, AssetOf<T>>;
+
+    #[pallet::storage]
+    pub type TransferTokenFee<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        ChainId,
+        Twox64Concat,
+        AssetOf<T>, // Provider Account
+        BalanceOf<T>,
+        ValueQuery,
+    >;
+
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
 
@@ -104,7 +137,10 @@ pub mod pallet {
     pub enum Error<T> {
         InvalidTransfer,
         NotExists,
+        InsufficientFund,
         InsufficientTransferFee,
+        BadAssetMetadata,
+        AssetIdOverflow,
     }
 
     #[pallet::call]
@@ -117,7 +153,7 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             ensure_signed(origin)?;
 
-            let resource_id = T::HashId::get();
+            let resource_id = T::HashResourceId::get();
             let metadata: Vec<u8> = hash.as_ref().to_vec();
             <parami_chainbridge::Pallet<T>>::transfer_generic(dest_id, resource_id, metadata)?;
             Ok(().into())
@@ -136,15 +172,16 @@ pub mod pallet {
                 Error::<T>::InvalidTransfer
             );
 
+            let free_balance = T::Currency::free_balance(&source);
+            ensure!(free_balance >= amount, Error::<T>::InsufficientFund);
+
             let fee = <NativeFee<T>>::get();
             ensure!(amount > fee, Error::<T>::InsufficientTransferFee);
 
-            let bridge_id = <parami_chainbridge::Pallet<T>>::account_id();
-
-            let resource_id = T::NativeTokenId::get();
+            let resource_id = T::NativeTokenResourceId::get();
             let pot = Self::generate_fee_pot();
 
-            T::Currency::transfer(&source, &bridge_id, (amount - fee).into(), AllowDeath)?;
+            T::Currency::withdraw(&source, amount - fee, WithdrawReasons::TRANSFER, AllowDeath)?;
             T::Currency::transfer(&source, &pot, fee.into(), AllowDeath)?;
 
             <parami_chainbridge::Pallet<T>>::transfer_fungible(
@@ -164,6 +201,18 @@ pub mod pallet {
             Ok(())
         }
 
+        #[pallet::weight(<T as Config>::WeightInfo::update_transfer_token_fee())]
+        pub fn update_transfer_token_fee(
+            origin: OriginFor<T>,
+            dest_id: ChainId,
+            asset_id: AssetOf<T>,
+            fee: BalanceOf<T>,
+        ) -> DispatchResult {
+            T::ForceOrigin::ensure_origin(origin)?;
+            <TransferTokenFee<T>>::insert(dest_id, asset_id, fee);
+            Ok(())
+        }
+
         #[pallet::weight(<T as Config>::WeightInfo::transfer_token())]
         pub fn transfer_token(
             origin: OriginFor<T>,
@@ -173,20 +222,30 @@ pub mod pallet {
             asset: AssetOf<T>,
         ) -> DispatchResultWithPostInfo {
             let source = ensure_signed(origin)?;
+
             ensure!(
                 <parami_chainbridge::Pallet<T>>::chain_whitelisted(dest_id),
                 Error::<T>::InvalidTransfer
             );
-            let bridge_id = <parami_chainbridge::Pallet<T>>::account_id();
-            let resource_id = <ResourceMap<T>>::get(asset).ok_or(Error::<T>::NotExists)?;
 
-            T::Assets::transfer(asset, &source, &bridge_id, amount, false)?;
+            let resource_id = <ResourceMap<T>>::get(asset).ok_or(Error::<T>::NotExists)?;
+            let fee = <TransferTokenFee<T>>::get(dest_id, asset);
+            let currency_balance = T::Currency::free_balance(&source);
+            let asset_balance = T::Assets::balance(asset, &source);
+            ensure!(fee <= currency_balance, Error::<T>::InsufficientTransferFee);
+            ensure!(amount <= asset_balance, Error::<T>::InsufficientFund);
+
+            let pot = Self::generate_fee_pot();
+            T::Currency::transfer(&source, &pot, fee, ExistenceRequirement::KeepAlive)?;
+            T::Assets::burn_from(asset, &source, amount)?;
+
             <parami_chainbridge::Pallet<T>>::transfer_fungible(
                 dest_id,
                 resource_id,
                 recipient,
                 U256::from(amount.saturated_into::<u128>()),
             )?;
+
             Ok(().into())
         }
 
@@ -198,19 +257,71 @@ pub mod pallet {
         ) -> DispatchResult {
             T::ForceOrigin::ensure_origin(origin)?;
             <ResourceMap<T>>::insert(asset_id, resource_id);
+            <ResourceId2Asset<T>>::insert(resource_id, asset_id);
+            Ok(())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::create_xasset())]
+        pub fn create_xasset(
+            origin: OriginFor<T>,
+            name: Vec<u8>,
+            symbol: Vec<u8>,
+            decimal: u8,
+            resource_id: ResourceId,
+        ) -> DispatchResult {
+            T::ForceOrigin::ensure_origin(origin.clone())?;
+
+            let limit = T::StringLimit::get() as usize;
+            ensure!(
+                name.len() > 0 && name.len() <= limit,
+                Error::<T>::BadAssetMetadata
+            );
+            ensure!(
+                0 < symbol.len() && symbol.len() <= limit,
+                Error::<T>::BadAssetMetadata
+            );
+
+            let is_valid_char = |c: &u8| c.is_ascii_whitespace() || c.is_ascii_alphanumeric();
+            ensure!(
+                name[0].is_ascii_alphabetic() && name.iter().all(is_valid_char),
+                Error::<T>::BadAssetMetadata
+            );
+            ensure!(
+                symbol[0].is_ascii_alphabetic() && symbol.iter().all(is_valid_char),
+                Error::<T>::BadAssetMetadata
+            );
+            let asset_id =
+                T::AssetIdManager::next_id().map_err(|_e| Error::<T>::AssetIdOverflow)?;
+            let owner_account = Self::generate_fee_pot();
+            T::Assets::create(asset_id, owner_account.clone(), true, One::one())?;
+            T::Assets::set(asset_id, &owner_account, name, symbol, decimal)?;
+
+            Self::force_set_resource(origin, resource_id, asset_id)?;
+            parami_chainbridge::Pallet::<T>::register_resource(
+                resource_id,
+                "XAssets.handle_transfer_fungibles".into(),
+            )?;
+
             Ok(())
         }
 
         #[pallet::weight(<T as Config>::WeightInfo::transfer())]
-        pub fn transfer(
+        pub fn handle_transfer_fungibles(
             origin: OriginFor<T>,
             to: <T as frame_system::Config>::AccountId,
             amount: BalanceOf<T>,
-            _r_id: ResourceId,
+            resource_id: ResourceId,
         ) -> DispatchResultWithPostInfo {
-            let source = T::BridgeOrigin::ensure_origin(origin)?;
-            <T as Config>::Currency::transfer(&source, &to, amount.into(), AllowDeath)?;
-            Ok(().into())
+            let _bridge = T::BridgeOrigin::ensure_origin(origin)?;
+            if resource_id == T::NativeTokenResourceId::get() {
+                <T as Config>::Currency::deposit_creating(&to, amount.into());
+                return Ok(().into());
+            }
+
+            let asset_id = <ResourceId2Asset<T>>::get(resource_id).ok_or(<Error<T>>::NotExists)?;
+            T::Assets::mint_into(asset_id, &to, amount.into())?;
+
+            return Ok(().into());
         }
 
         #[pallet::weight(<T as Config>::WeightInfo::remark())]

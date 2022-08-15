@@ -6019,6 +6019,7 @@ dependencies = [
  "pallet-balances",
  "pallet-uniques",
  "parami-advertiser",
+ "parami-assetmanager",
  "parami-did",
  "parami-nft",
  "parami-ocw",
@@ -6050,6 +6051,23 @@ dependencies = [
  "sp-core",
  "sp-io",
  "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "parami-assetmanager"
+version = "3.0.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-assets",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-runtime-interface",
  "sp-std",
 ]
 
@@ -6088,6 +6106,7 @@ dependencies = [
  "parami-did-rpc",
  "parami-linker",
  "parami-nft",
+ "parami-nft-rpc",
  "parami-swap-rpc",
  "rand 0.7.3",
  "sc-basic-authorship",
@@ -6165,11 +6184,13 @@ dependencies = [
  "pallet-utility",
  "parami-ad",
  "parami-advertiser",
+ "parami-assetmanager",
  "parami-chainbridge",
  "parami-did",
  "parami-linker",
  "parami-magic",
  "parami-nft",
+ "parami-nft-rpc-runtime-api",
  "parami-ocw",
  "parami-primitives",
  "parami-swap",
@@ -6298,6 +6319,7 @@ dependencies = [
  "pallet-assets",
  "pallet-balances",
  "pallet-uniques",
+ "parami-assetmanager",
  "parami-did",
  "parami-linker",
  "parami-ocw",
@@ -6315,6 +6337,33 @@ dependencies = [
  "sp-runtime-interface",
  "sp-std",
  "tracing",
+]
+
+[[package]]
+name = "parami-nft-rpc"
+version = "3.0.0"
+dependencies = [
+ "jsonrpsee",
+ "parami-nft-rpc-runtime-api",
+ "parami-primitives",
+ "parity-scale-codec",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-rpc",
+ "sp-runtime",
+]
+
+[[package]]
+name = "parami-nft-rpc-runtime-api"
+version = "3.0.0"
+dependencies = [
+ "parami-primitives",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -6364,6 +6413,7 @@ dependencies = [
  "parami-did-rpc",
  "parami-linker",
  "parami-nft",
+ "parami-nft-rpc",
  "parami-para-runtime",
  "parami-swap-rpc",
  "parity-scale-codec",
@@ -6476,11 +6526,13 @@ dependencies = [
  "parachain-info",
  "parami-ad",
  "parami-advertiser",
+ "parami-assetmanager",
  "parami-chainbridge",
  "parami-did",
  "parami-linker",
  "parami-magic",
  "parami-nft",
+ "parami-nft-rpc-runtime-api",
  "parami-ocw",
  "parami-primitives",
  "parami-swap",
@@ -6614,6 +6666,7 @@ dependencies = [
  "frame-system",
  "pallet-assets",
  "pallet-balances",
+ "parami-assetmanager",
  "parami-chainbridge",
  "parity-scale-codec",
  "rand 0.7.3",

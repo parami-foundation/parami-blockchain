@@ -43,11 +43,13 @@ parami-did = { path = '../../pallets/did', default-features = false }
 parami-linker = { path = '../../pallets/linker', default-features = false }
 parami-magic = { path = '../../pallets/magic', default-features = false }
 parami-nft = { path = '../../pallets/nft', default-features = false }
+parami-nft-rpc-runtime-api = { path = '../../pallets/nft/rpc/runtime-api', default-features = false }
 parami-ocw = { path = '../../pallets/ocw', default-features = false }
 parami-swap = { path = '../../pallets/swap', default-features = false }
 parami-swap-rpc-runtime-api = { path = '../../pallets/swap/rpc/runtime-api', default-features = false }
 parami-tag = { path = '../../pallets/tag', default-features = false }
 parami-traits = { path = '../../pallets/traits', default-features = false }
+parami-assetmanager = { path = '../../pallets/assetmanager', default-features = false }
 
 # Substrate Dependencies
 ## Substrate Primitive Dependencies
@@ -162,6 +164,7 @@ std = [
     'parami-swap-rpc-runtime-api/std',
     'parami-tag/std',
     'parami-traits/std',
+    'parami-assetmanager/std',
 
     'sp-api/std',
     'sp-block-builder/std',

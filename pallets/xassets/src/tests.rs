@@ -1,15 +1,20 @@
 use crate::{self as parami_xassets, mock::*, *};
 
 use codec::Encode;
+use sp_io::hashing::blake2_128;
 
+use frame_support::traits::tokens::fungibles::InspectMetadata;
+use frame_support::traits::Currency as TheCurrency;
 use frame_support::{assert_noop, assert_ok, dispatch::DispatchError};
 
 use sp_core::{blake2_256, H256};
 
-pub type HashId = <mock::MockRuntime as parami_xassets::Config>::HashId;
+pub type NativeTokenResourceId =
+    <mock::MockRuntime as parami_xassets::Config>::NativeTokenResourceId;
+pub type HashResourceId = <mock::MockRuntime as parami_xassets::Config>::HashResourceId;
 
 fn make_remark_proposal(hash: H256) -> mock::Call {
-    let resource_id = HashId::get();
+    let resource_id = HashResourceId::get();
     mock::Call::XAssets(crate::Call::remark {
         hash,
         r_id: resource_id,
@@ -17,11 +22,11 @@ fn make_remark_proposal(hash: H256) -> mock::Call {
 }
 
 fn make_transfer_proposal(to: u64, amount: u64) -> mock::Call {
-    let resource_id = HashId::get();
-    mock::Call::XAssets(crate::Call::transfer {
+    let resource_id = NativeTokenResourceId::get();
+    mock::Call::XAssets(crate::Call::handle_transfer_fungibles {
         to,
         amount: amount.into(),
-        r_id: resource_id,
+        resource_id,
     })
 }
 
@@ -35,7 +40,7 @@ fn transfer_hash() {
         .build()
         .execute_with(|| {
             let dest_chain = 0;
-            let resource_id = HashId::get();
+            let resource_id = HashResourceId::get();
             let hash: H256 = "ABC".using_encoded(blake2_256).into();
 
             assert_ok!(mock::ChainBridge::set_threshold(
@@ -95,7 +100,7 @@ fn transfer_native() {
         .build()
         .execute_with(|| {
             let dest_chain = 0;
-            let resource_id = NativeTokenId::get();
+            let resource_id = NativeTokenResourceId::get();
             let amount: u64 = 100;
             let recipient = vec![99];
             let bridge_fee: u64 = 20;
@@ -107,6 +112,8 @@ fn transfer_native() {
 
             assert_ok!(mock::XAssets::update_native_fee(Origin::root(), bridge_fee));
 
+            let total_issuance = <MockRuntime as crate::Config>::Currency::total_issuance();
+
             assert_ok!(mock::XAssets::transfer_native(
                 Origin::signed(RELAYER_A),
                 amount.clone(),
@@ -114,6 +121,10 @@ fn transfer_native() {
                 dest_chain,
             ));
 
+            assert_eq!(
+                <MockRuntime as crate::Config>::Currency::total_issuance(),
+                total_issuance - amount + bridge_fee
+            );
             expect_event(parami_chainbridge::Event::FungibleTransfer(
                 dest_chain,
                 1,
@@ -174,7 +185,7 @@ fn execute_remark_bad_origin() {
         .build()
         .execute_with(|| {
             let hash: H256 = "ABC".using_encoded(blake2_256).into();
-            let resource_id = HashId::get();
+            let resource_id = HashResourceId::get();
             assert_ok!(mock::XAssets::remark(
                 Origin::signed(mock::ChainBridge::account_id()),
                 hash,
@@ -194,31 +205,36 @@ fn execute_remark_bad_origin() {
 }
 
 #[test]
-fn transfer() {
+fn should_handle_transfer_native_token() {
     TestExternalitiesBuilder::default()
         .build()
         .execute_with(|| {
+            let user = 10086;
             // Check inital state
-            let bridge_id: u64 = mock::ChainBridge::account_id();
-            let resource_id = HashId::get();
-            assert_eq!(Balances::free_balance(&bridge_id), ENDOWED_BALANCE);
+            let resource_id = NativeTokenResourceId::get();
+            let total_balance = mock::Balances::total_issuance();
             // Transfer and check result
-            assert_ok!(mock::XAssets::transfer(
+            assert_eq!(Balances::free_balance(user), 0);
+            assert_ok!(mock::XAssets::handle_transfer_fungibles(
                 Origin::signed(mock::ChainBridge::account_id()),
-                RELAYER_A,
+                user,
                 10,
                 resource_id,
             ));
-            assert_eq!(Balances::free_balance(&bridge_id), ENDOWED_BALANCE - 10);
-            assert_eq!(Balances::free_balance(RELAYER_A), ENDOWED_BALANCE + 10);
+            assert_eq!(Balances::free_balance(user), 10);
+            assert_eq!(mock::Balances::total_issuance(), total_balance + 10);
 
-            assert_events(vec![mock::Event::Balances(
-                pallet_balances::Event::Transfer {
-                    from: mock::ChainBridge::account_id(),
-                    to: RELAYER_A,
+            assert_events(vec![
+                mock::Event::Balances(pallet_balances::Event::Deposit {
+                    who: user,
                     amount: 10,
-                },
-            )]);
+                }),
+                mock::Event::System(frame_system::Event::NewAccount { account: user }),
+                mock::Event::Balances(pallet_balances::Event::Endowed {
+                    account: user,
+                    free_balance: 10,
+                }),
+            ]);
         })
 }
 
@@ -302,10 +318,6 @@ fn create_sucessful_transfer_proposal() {
             assert_eq!(prop, expected);
 
             assert_eq!(Balances::free_balance(RELAYER_A), ENDOWED_BALANCE + 10);
-            assert_eq!(
-                Balances::free_balance(mock::ChainBridge::account_id()),
-                ENDOWED_BALANCE - 10
-            );
 
             assert_events(vec![
                 mock::Event::ChainBridge(parami_chainbridge::Event::VoteFor(
@@ -320,9 +332,8 @@ fn create_sucessful_transfer_proposal() {
                 mock::Event::ChainBridge(parami_chainbridge::Event::ProposalApproved(
                     src_id, prop_id,
                 )),
-                mock::Event::Balances(pallet_balances::Event::Transfer {
-                    from: mock::ChainBridge::account_id(),
-                    to: RELAYER_A,
+                mock::Event::Balances(pallet_balances::Event::Deposit {
+                    who: RELAYER_A,
                     amount: 10,
                 }),
                 mock::Event::ChainBridge(parami_chainbridge::Event::ProposalSucceeded(
@@ -366,13 +377,14 @@ fn can_update_native_fee() {
 }
 
 #[test]
-fn can_transfer_token() {
+fn failed_transfer_token() {
     TestExternalitiesBuilder::default()
         .build()
         .execute_with(|| {
             let resource_id = H256::from_slice("00000000001111111111222222222233".as_bytes());
             let chain_id = 100u8;
             let asset_id = 1;
+            let bridge_fee: u64 = 200;
             let recipient: Vec<u8> = "address".as_bytes().into();
             mock::ChainBridge::whitelist_chain(Origin::root(), chain_id).unwrap();
             mock::XAssets::force_set_resource(Origin::root(), resource_id, asset_id).unwrap();
@@ -384,25 +396,79 @@ fn can_transfer_token() {
                 101,
             )
             .unwrap();
-            assert_ok!(mock::XAssets::transfer_token(
-                Origin::signed(chain_id as u64),
-                chain_id as u64,
-                recipient.clone(),
+
+            assert_ok!(mock::XAssets::update_transfer_token_fee(
+                Origin::root(),
                 100,
+                asset_id,
+                bridge_fee
+            ));
+            assert_noop!(
+                mock::XAssets::transfer_token(
+                    Origin::signed(chain_id as u64),
+                    chain_id as u64,
+                    recipient.clone(),
+                    100,
+                    asset_id
+                ),
+                parami_xassets::Error::<mock::MockRuntime>::InsufficientTransferFee
+            );
+        });
+}
+
+#[test]
+fn can_transfer_token() {
+    TestExternalitiesBuilder::default()
+        .build()
+        .execute_with(|| {
+            let resource_id = H256::from_slice("00000000001111111111222222222233".as_bytes());
+            let user_id = 10000u64;
+            let chain_id = 100u8;
+            let asset_id = 0;
+            let recipient: Vec<u8> = "address".as_bytes().into();
+            let bridge_fee: u64 = 20;
+            mock::ChainBridge::whitelist_chain(Origin::root(), chain_id).unwrap();
+            let _ = mock::Balances::deposit_creating(&user_id, 1001);
+            assert_ok!(mock::XAssets::create_xasset(
+                Origin::root(),
+                Into::<Vec<u8>>::into("COIN"),
+                Into::<Vec<u8>>::into("COIN"),
+                18,
+                resource_id,
+            ));
+            mock::Assets::mint(
+                Origin::signed(mock::XAssets::generate_fee_pot()),
+                asset_id,
+                user_id,
+                101,
+            )
+            .unwrap();
+            assert_ok!(mock::XAssets::update_transfer_token_fee(
+                Origin::root(),
+                100,
+                asset_id,
+                bridge_fee
+            ));
+
+            assert_ok!(mock::XAssets::transfer_token(
+                Origin::signed(user_id),
+                100,
+                recipient.clone(),
+                chain_id,
                 asset_id
             ));
+
             assert_events(vec![
-                mock::Event::Assets(pallet_assets::Event::Transferred {
+                mock::Event::Assets(pallet_assets::Event::Burned {
                     asset_id,
-                    from: chain_id as u64,
-                    to: <parami_chainbridge::Pallet<MockRuntime>>::account_id(),
-                    amount: 100,
+                    owner: user_id,
+                    balance: 100,
                 }),
                 mock::Event::ChainBridge(parami_chainbridge::Event::FungibleTransfer(
                     chain_id,
                     1,
                     resource_id,
-                    100u32.into(),
+                    100u64.into(),
                     recipient.clone(),
                 )),
             ]);
@@ -436,15 +502,24 @@ fn fail_to_tranfer_token_if_not_exist_asset_2_resource_id_config() {
     TestExternalitiesBuilder::default()
         .build()
         .execute_with(|| {
+            let user = 10;
             let chain_id = 100u8;
             let asset_id = 1;
             let recipient: Vec<u8> = "address".as_bytes().into();
 
             mock::ChainBridge::whitelist_chain(Origin::root(), chain_id).unwrap();
+            assert_ok!(mock::Assets::force_create(
+                Origin::root(),
+                asset_id,
+                chain_id as u64,
+                true,
+                1
+            ));
+            assert_ok!(mock::Assets::mint_into(asset_id, &user, 110));
 
             assert_noop!(
                 mock::XAssets::transfer_token(
-                    Origin::signed(chain_id as u64),
+                    Origin::signed(user),
                     100,
                     recipient.clone(),
                     chain_id,
@@ -466,6 +541,7 @@ fn fail_to_transfer_if_no_asset() {
             let recipient: Vec<u8> = "address".as_bytes().into();
             mock::ChainBridge::whitelist_chain(Origin::root(), chain_id).unwrap();
             mock::XAssets::force_set_resource(Origin::root(), resource_id, asset_id).unwrap();
+
             assert_noop!(
                 mock::XAssets::transfer_token(
                     Origin::signed(chain_id as u64),
@@ -474,7 +550,7 @@ fn fail_to_transfer_if_no_asset() {
                     chain_id,
                     asset_id,
                 ),
-                pallet_assets::Error::<mock::MockRuntime>::Unknown
+                crate::Error::<mock::MockRuntime>::InsufficientFund
             );
         });
 }
@@ -486,13 +562,18 @@ fn fail_to_transfer_if_no_enough_balance() {
         .execute_with(|| {
             let resource_id = H256::from_slice("00000000001111111111222222222233".as_bytes());
             let chain_id = 100u8;
-            let asset_id = 1;
+            let asset_id = 0;
             let recipient: Vec<u8> = "address".as_bytes().into();
             mock::ChainBridge::whitelist_chain(Origin::root(), chain_id).unwrap();
-            mock::XAssets::force_set_resource(Origin::root(), resource_id, asset_id).unwrap();
-            mock::Assets::force_create(Origin::root(), asset_id, chain_id as u64, true, 1).unwrap();
+            assert_ok!(mock::XAssets::create_xasset(
+                Origin::root(),
+                Into::<Vec<u8>>::into("COIN"),
+                Into::<Vec<u8>>::into("COIN"),
+                18,
+                resource_id,
+            ));
             mock::Assets::mint(
-                Origin::signed(chain_id as u64),
+                Origin::signed(mock::XAssets::generate_fee_pot()),
                 asset_id,
                 chain_id as u64,
                 10,
@@ -506,7 +587,76 @@ fn fail_to_transfer_if_no_enough_balance() {
                     chain_id,
                     asset_id,
                 ),
-                pallet_assets::Error::<mock::MockRuntime>::BalanceLow
+                crate::Error::<mock::MockRuntime>::InsufficientFund
+            );
+        });
+}
+
+#[test]
+fn should_handle_transfer_assets() {
+    let asset_resource_id = parami_chainbridge::derive_resource_id(233, &blake2_128(b"test"));
+    let asset_id = 0;
+    let user_account: u64 = 1;
+
+    TestExternalitiesBuilder::default()
+        .build()
+        .execute_with(|| {
+            // Check inital state
+            assert_ok!(mock::XAssets::create_xasset(
+                Origin::root(),
+                Into::<Vec<u8>>::into("COIN"),
+                Into::<Vec<u8>>::into("COIN"),
+                18,
+                asset_resource_id,
+            ));
+
+            assert_eq!(mock::Assets::total_issuance(asset_id), 0);
+            assert_eq!(mock::Assets::balance(asset_id, user_account), 0);
+            // Transfer and check result
+            assert_ok!(mock::XAssets::handle_transfer_fungibles(
+                Origin::signed(mock::ChainBridge::account_id()),
+                user_account,
+                10,
+                asset_resource_id,
+            ));
+            assert_eq!(mock::Assets::balance(asset_id, user_account), 10);
+            assert_eq!(mock::Assets::total_issuance(asset_id), 10);
+        })
+}
+
+#[test]
+fn should_create_xassets() {
+    let asset_resource_id = parami_chainbridge::derive_resource_id(233, &blake2_128(b"test"));
+
+    TestExternalitiesBuilder::default()
+        .build()
+        .execute_with(|| {
+            let asset_id: u32 = 0;
+
+            let symbol = "TC";
+            let name = "TestCoin";
+            assert_ok!(XAssets::create_xasset(
+                Origin::root(),
+                name.into(),
+                symbol.into(),
+                18,
+                asset_resource_id,
+            ));
+
+            assert_eq!(Assets::name(&asset_id), Into::<Vec<u8>>::into(name));
+            assert_eq!(Assets::symbol(&asset_id), Into::<Vec<u8>>::into(symbol));
+
+            assert_eq!(
+                ResourceMap::<MockRuntime>::get(asset_id).unwrap(),
+                asset_resource_id
+            );
+            assert_eq!(
+                ResourceId2Asset::<MockRuntime>::get(asset_resource_id).unwrap(),
+                asset_id
+            );
+            assert_eq!(
+                ChainBridge::get_resources(asset_resource_id).unwrap(),
+                Into::<Vec<u8>>::into("XAssets.handle_transfer_fungibles")
             );
         });
 }

@@ -14,7 +14,7 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
-mod migrations;
+pub mod migrations;
 mod types;
 
 use frame_support::{
@@ -29,8 +29,8 @@ use parami_did_utils::derive_storage_key;
 use parami_traits::Nfts;
 use sp_runtime::{
     traits::{
-        Hash, LookupError, MaybeDisplay, MaybeMallocSizeOf, MaybeSerializeDeserialize, Member,
-        SimpleBitOps, StaticLookup,
+        AtLeast32BitUnsigned, Bounded, Hash, LookupError, MaybeDisplay, MaybeMallocSizeOf,
+        MaybeSerializeDeserialize, Member, SimpleBitOps, StaticLookup,
     },
     DispatchError, MultiAddress,
 };
