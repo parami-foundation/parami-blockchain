@@ -30,7 +30,7 @@
       "id": 233,
       "type": "substrate",
       "name": "Parami Dana",
-      "endpoint": "wss://rpc-na.parami.io"
+      "endpoint": "wss://rpc-global.parami.io"
     },
     {
       "id": 0,
