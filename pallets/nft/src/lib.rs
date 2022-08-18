@@ -317,12 +317,6 @@ pub mod pallet {
                 Error::<T>::Exists
             );
 
-            // user should link network first
-            ensure!(
-                T::Links::all_links(&owner).contains_key(&network),
-                Error::<T>::NetworkNotLinked
-            );
-
             let created = <frame_system::Pallet<T>>::block_number();
             let lifetime = T::PendingLifetime::get();
             let deadline = created.saturating_add(lifetime);
