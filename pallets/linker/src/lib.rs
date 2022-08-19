@@ -15,12 +15,15 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+mod btc;
 mod did;
 mod functions;
 mod impl_links;
 mod migrations;
 mod ocw;
 mod types;
+
+pub use btc::hashing;
 
 use frame_support::{
     dispatch::{DispatchResult, DispatchResultWithPostInfo},
