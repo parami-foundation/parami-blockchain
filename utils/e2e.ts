@@ -164,10 +164,9 @@ import { submit } from './utils';
 
   spinnies.add('pay', { text: `Paying to ${m.address}...` });
   const before = await chain.query.assets.account(nft, m.address);
-  const beforeBalance = !!before && !!(before as any).toHuman() && !!(before as any).toHuman().balance ? (before as any).toHuman().balance.replaceAll(',', '') : 0;
+  const beforeBalance = !!before && !!(before as any).toHuman() ? (before as any).toHuman().balance : '0';
   await submit(chain, chain.tx.ad.pay(ad, nft, did, [[tag, 5]], null), a);
   const after = await chain.query.assets.account(nft, m.address);
-  console.log(`account of ${m.address} on asset ${nft} is ${after.toHuman()}, balance is ${(after.toHuman() as any).balance}`);
   const { balance = '' } = (after as any).toHuman();
   const afterBalance = balance;
   spinnies.succeed('pay', { text: `Paid: before is ${beforeBalance}, after is ${afterBalance}` });
