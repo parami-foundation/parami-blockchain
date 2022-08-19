@@ -73,6 +73,7 @@ std = [
     'parami-swap/std',
     'parami-traits/std',
     'parami-primitives/std',
+    'parami-assetmanager/std',
 
     'ethabi/full-serde',
     'hex/std',
