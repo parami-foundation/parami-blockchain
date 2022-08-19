@@ -3,7 +3,6 @@ use crate::{self as pallet_chainbridge, mock::*, *};
 use frame_support::traits::Hooks;
 use frame_support::{assert_noop, assert_ok};
 
-
 #[test]
 fn derive_ids() {
     let chain = 1;
