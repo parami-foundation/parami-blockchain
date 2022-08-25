@@ -358,7 +358,7 @@ pub mod pallet {
 
             ensure!(T::Tags::get_score(&did, &tag) == 0, Error::<T>::Exists);
 
-            T::Tags::influence(&did, &tag, score)?;
+            T::Tags::submit_intrinsic(&did, &tag, score)?;
 
             // Self::deposit_event(Event::<T>::Scored(did, tag, score));
 

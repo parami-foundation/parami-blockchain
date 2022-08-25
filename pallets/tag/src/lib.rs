@@ -388,4 +388,20 @@ impl<T: Config> Tags<TagHash, AdOf<T>, T::DecentralizedId> for Pallet<T> {
 
         Ok(())
     }
+
+    fn submit_intrinsic<K: AsRef<Vec<u8>>>(
+        kol: &T::DecentralizedId,
+        tag: K,
+        score: i32,
+    ) -> DispatchResult {
+        <PersonasOf<T>>::mutate(&kol, tag.as_ref(), |d_score| {
+            let new_d_score = types::DiffrentiateScore {
+                intrinsic: score,
+                ..*d_score
+            };
+            *d_score = new_d_score;
+        });
+
+        Ok(())
+    }
 }

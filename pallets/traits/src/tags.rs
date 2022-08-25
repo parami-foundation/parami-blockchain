@@ -165,4 +165,7 @@ pub trait Tags<Hash, AdvertisementId, DecentralizedId> {
         tag: K, //
         delta: i32,
     ) -> DispatchResult;
+
+    fn submit_intrinsic<K: AsRef<Tag>>(did: &DecentralizedId, tag: K, score: i32)
+        -> DispatchResult;
 }
