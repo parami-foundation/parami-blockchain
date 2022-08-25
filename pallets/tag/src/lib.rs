@@ -119,7 +119,7 @@ pub mod pallet {
         T::DecentralizedId,
         Blake2_256,
         Vec<u8>,
-        types::Score, // (last_output, last_input)
+        types::DiffrentiateScore,
         ValueQuery,
     >;
 
@@ -145,7 +145,7 @@ pub mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_runtime_upgrade() -> Weight {
-            migrations::migrate::<T>()
+            0
         }
     }
 
@@ -198,7 +198,7 @@ pub mod pallet {
     pub struct GenesisConfig<T: Config> {
         pub tag: Vec<Vec<u8>>,
         pub tags: Vec<(AdOf<T>, Vec<u8>)>,
-        pub personas: Vec<(T::DecentralizedId, Vec<u8>, types::Score)>,
+        pub personas: Vec<(T::DecentralizedId, Vec<u8>, types::DiffrentiateScore)>,
         pub influences: Vec<(T::DecentralizedId, Vec<u8>, types::Score)>,
     }
 
@@ -233,14 +233,7 @@ pub mod pallet {
             }
 
             for (did, tag, score) in &self.personas {
-                <PersonasOf<T>>::insert(
-                    did,
-                    tag,
-                    types::Score {
-                        current_score: score.current_score,
-                        last_input: score.last_input,
-                    },
-                );
+                <PersonasOf<T>>::insert(did, tag, score);
             }
 
             for (did, tag, score) in &self.influences {
@@ -357,12 +350,12 @@ impl<T: Config> Tags<TagHash, AdOf<T>, T::DecentralizedId> for Pallet<T> {
 
     fn personas_of(did: &T::DecentralizedId) -> BTreeMap<TagHash, i32> {
         Self::storage_double_map_to_btree_map(&mut <PersonasOf<T>>::iter_prefix_values(did), |v| {
-            v.current_score
+            v.score()
         })
     }
 
     fn get_score<K: AsRef<Vec<u8>>>(did: &T::DecentralizedId, tag: K) -> i32 {
-        <PersonasOf<T>>::get(did, tag.as_ref()).current_score
+        <PersonasOf<T>>::get(did, tag.as_ref()).score()
     }
 
     fn influence<K: AsRef<Vec<u8>>>(
@@ -371,7 +364,7 @@ impl<T: Config> Tags<TagHash, AdOf<T>, T::DecentralizedId> for Pallet<T> {
         delta: i32,
     ) -> DispatchResult {
         <PersonasOf<T>>::mutate(&did, tag.as_ref(), |score| {
-            *score = Self::accrue(score, delta);
+            *score = score.accure(delta);
         });
 
         Ok(())
