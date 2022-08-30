@@ -291,49 +291,55 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
             (
                 DID_CHARLIE,
                 vec![0u8, 1u8, 2u8, 3u8, 4u8, 5u8],
-                parami_tag::Score {
-                    current_score: 5,
-                    last_input: 4,
+                parami_tag::types::Score {
+                    extrinsic: 5,
+                    last_extrinsic: 4,
+                    intrinsic: 0,
                 },
             ),
             (
                 DID_TAGA5_TAGB2,
                 vec![0u8, 1u8, 2u8, 3u8, 4u8, 5u8],
-                parami_tag::Score {
-                    current_score: 5,
-                    last_input: 0,
+                parami_tag::types::Score {
+                    extrinsic: 5,
+                    last_extrinsic: 0,
+                    intrinsic: 0,
                 },
             ),
             (
                 DID_TAGA5_TAGB2,
                 vec![5u8, 4u8, 3u8, 2u8, 1u8, 0u8],
-                parami_tag::Score {
-                    current_score: 2,
-                    last_input: 0,
+                parami_tag::types::Score {
+                    extrinsic: 2,
+                    last_extrinsic: 0,
+                    intrinsic: 0,
                 },
             ),
             (
                 DID_TAGA100_TAGB100,
                 vec![0u8, 1u8, 2u8, 3u8, 4u8, 5u8],
-                parami_tag::Score {
-                    current_score: 100,
-                    last_input: 0,
+                parami_tag::types::Score {
+                    extrinsic: 100,
+                    last_extrinsic: 0,
+                    intrinsic: 0,
                 },
             ),
             (
                 DID_TAGA100_TAGB100,
                 vec![5u8, 4u8, 3u8, 2u8, 1u8, 0u8],
-                parami_tag::Score {
-                    current_score: 100,
-                    last_input: 0,
+                parami_tag::types::Score {
+                    extrinsic: 100,
+                    last_extrinsic: 0,
+                    intrinsic: 0,
                 },
             ),
             (
                 DID_TAGA120_TAGB0,
                 vec![0u8, 1u8, 2u8, 3u8, 4u8, 5u8],
-                parami_tag::Score {
-                    current_score: 120,
-                    last_input: 0,
+                parami_tag::types::Score {
+                    extrinsic: 120,
+                    last_extrinsic: 0,
+                    intrinsic: 0,
                 },
             ),
         ],

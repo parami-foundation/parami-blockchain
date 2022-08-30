@@ -14,25 +14,25 @@ pub struct Metadata<V, D, N> {
 
 #[derive(Clone, Decode, Default, Encode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct Score {
+pub struct SingleMetricScore {
     pub current_score: i32,
     pub last_input: i32,
 }
 
 #[derive(Clone, Decode, Default, Encode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct DiffrentiateScore {
+pub struct Score {
     pub extrinsic: i32,
     pub intrinsic: i32,
     pub last_extrinsic: i32,
 }
 
-impl DiffrentiateScore {
+impl Score {
     pub fn score(&self) -> i32 {
         self.extrinsic + self.intrinsic
     }
 
-    pub fn accure(&self, delta: i32) -> DiffrentiateScore {
+    pub fn accure(&self, delta: i32) -> Score {
         use core::f32::consts::PI;
         use num_traits::Float;
 
@@ -45,7 +45,7 @@ impl DiffrentiateScore {
 
         let extrinsic = (extrinsic.round() * 10.0) as i32 / 10;
 
-        DiffrentiateScore {
+        Score {
             extrinsic,
             last_extrinsic,
             ..*self

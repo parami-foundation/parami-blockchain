@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub use pallet::*;
-pub use types::Score;
+pub use types::SingleMetricScore;
 
 #[rustfmt::skip]
 pub mod weights;
@@ -119,7 +119,7 @@ pub mod pallet {
         T::DecentralizedId,
         Blake2_256,
         Vec<u8>,
-        types::DiffrentiateScore,
+        types::Score,
         ValueQuery,
     >;
 
@@ -131,7 +131,7 @@ pub mod pallet {
         T::DecentralizedId,
         Blake2_256,
         Vec<u8>,
-        types::Score, // (last_output, last_input)
+        types::SingleMetricScore, // (last_output, last_input)
         ValueQuery,
     >;
 
@@ -198,8 +198,8 @@ pub mod pallet {
     pub struct GenesisConfig<T: Config> {
         pub tag: Vec<Vec<u8>>,
         pub tags: Vec<(AdOf<T>, Vec<u8>)>,
-        pub personas: Vec<(T::DecentralizedId, Vec<u8>, types::DiffrentiateScore)>,
-        pub influences: Vec<(T::DecentralizedId, Vec<u8>, types::Score)>,
+        pub personas: Vec<(T::DecentralizedId, Vec<u8>, types::Score)>,
+        pub influences: Vec<(T::DecentralizedId, Vec<u8>, types::SingleMetricScore)>,
     }
 
     #[cfg(feature = "std")]
@@ -240,7 +240,7 @@ pub mod pallet {
                 <InfluencesOf<T>>::insert(
                     did,
                     tag,
-                    types::Score {
+                    types::SingleMetricScore {
                         current_score: score.current_score,
                         last_input: score.last_input,
                     },
@@ -266,7 +266,7 @@ impl<T: Config> Pallet<T> {
         Self::key(&tag)
     }
 
-    pub(crate) fn accrue(score: &types::Score, delta: i32) -> types::Score {
+    pub(crate) fn accrue(score: &types::SingleMetricScore, delta: i32) -> types::SingleMetricScore {
         use core::f32::consts::PI;
 
         // f[x] := ArcTan[x/50] * 200 / PI
@@ -278,7 +278,7 @@ impl<T: Config> Pallet<T> {
 
         let current_score = (current_score.round() * 10.0) as i32 / 10;
 
-        types::Score {
+        types::SingleMetricScore {
             current_score,
             last_input,
         }
@@ -395,7 +395,7 @@ impl<T: Config> Tags<TagHash, AdOf<T>, T::DecentralizedId> for Pallet<T> {
         score: i32,
     ) -> DispatchResult {
         <PersonasOf<T>>::mutate(&kol, tag.as_ref(), |d_score| {
-            let new_d_score = types::DiffrentiateScore {
+            let new_d_score = types::Score {
                 intrinsic: score,
                 ..*d_score
             };
