@@ -497,8 +497,7 @@ pub mod pallet {
 
         /// The signature param is combined by ad_id, nft_id, visitor, scores, referrer
         ///
-        // #[pallet::weight(<T as Config>::WeightInfo::claim())]
-        #[pallet::weight(100)]
+        #[pallet::weight(0)]
         pub fn claim(
             origin: OriginFor<T>,
             ad_id: HashOf<T>,
