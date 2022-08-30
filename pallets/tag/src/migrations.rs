@@ -156,3 +156,19 @@ pub mod v3 {
         }
     }
 }
+
+pub mod v4 {
+    use super::*;
+    pub struct MigrationScore<T: Config>(sp_std::marker::PhantomData<T>);
+
+    impl<T: Config> OnRuntimeUpgrade for MigrationScore<T> {
+        fn on_runtime_upgrade() -> Weight {
+            let version = StorageVersion::get::<Pallet<T>>();
+            if version != 1 {
+                return 0;
+            }
+
+            return 1;
+        }
+    }
+}
