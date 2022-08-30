@@ -683,7 +683,7 @@ impl<T: Config> Pallet<T> {
 
         for (tag, score) in scores {
             msg_vec.extend(tag);
-            msg_vec.push((score + 5).try_into().unwrap());
+            msg_vec.extend(score.encode());
         }
 
         if let Some(referrer_did) = referrer {
