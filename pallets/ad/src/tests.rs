@@ -575,9 +575,10 @@ fn should_pay() {
         let nft_meta = Nft::meta(nft).unwrap();
         assert_eq!(Assets::balance(nft_meta.token_asset_id, &CHARLIE), 502);
 
+        // initially charlie'score is 5 + 0 (in + ext), after get a rating of 5, charlie's score is 5 + (0 * 0.8 + 5 * 10 * 0.2) = 15
         assert_eq!(
             Tag::get_score(&DID_CHARLIE, vec![0u8, 1u8, 2u8, 3u8, 4u8, 5u8]),
-            11
+            15
         );
     });
 }

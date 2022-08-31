@@ -397,7 +397,7 @@ impl<T: Config> Tags<TagHash, AdOf<T>, T::DecentralizedId> for Pallet<T> {
         intrinsic: i32,
     ) -> DispatchResult {
         ensure!(
-            intrinsic >= 0 && intrinsic <= 5,
+            intrinsic >= 0 && intrinsic <= 50,
             Error::<T>::RatingOutOfRange
         );
         <PersonasOf<T>>::mutate(&kol, tag.as_ref(), |score| {
