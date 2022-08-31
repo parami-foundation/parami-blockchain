@@ -842,7 +842,7 @@ impl<T: Config> Pallet<T> {
         // 3. influence visitor
         for (tag, score) in scores {
             ensure!(T::Tags::has_tag(&ad_id, &tag), Error::<T>::TagNotExists);
-            ensure!(*score >= -5 && *score <= 5, Error::<T>::ScoreOutOfRange);
+            ensure!(*score >= 0 && *score <= 5, Error::<T>::ScoreOutOfRange);
 
             T::Tags::influence(&visitor, &tag, *score as i32)?;
         }
