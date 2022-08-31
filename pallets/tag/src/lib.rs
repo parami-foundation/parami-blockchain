@@ -153,6 +153,7 @@ pub mod pallet {
     pub enum Error<T> {
         Exists,
         InsufficientBalance,
+        RatingOutOfRange,
     }
 
     #[pallet::call]
@@ -361,10 +362,11 @@ impl<T: Config> Tags<TagHash, AdOf<T>, T::DecentralizedId> for Pallet<T> {
     fn influence<K: AsRef<Vec<u8>>>(
         did: &T::DecentralizedId,
         tag: K,
-        delta: i32,
+        rating: i32,
     ) -> DispatchResult {
+        ensure!(rating >= 0 && rating <= 5, Error::<T>::RatingOutOfRange);
         <PersonasOf<T>>::mutate(&did, tag.as_ref(), |score| {
-            *score = score.accure(delta);
+            *score = score.accure_extrinsic(rating as u8);
         });
 
         Ok(())
@@ -392,14 +394,14 @@ impl<T: Config> Tags<TagHash, AdOf<T>, T::DecentralizedId> for Pallet<T> {
     fn submit_intrinsic<K: AsRef<Vec<u8>>>(
         kol: &T::DecentralizedId,
         tag: K,
-        score: i32,
+        intrinsic: i32,
     ) -> DispatchResult {
-        <PersonasOf<T>>::mutate(&kol, tag.as_ref(), |d_score| {
-            let new_d_score = types::Score {
-                intrinsic: score,
-                ..*d_score
-            };
-            *d_score = new_d_score;
+        ensure!(
+            intrinsic >= 0 && intrinsic <= 5,
+            Error::<T>::RatingOutOfRange
+        );
+        <PersonasOf<T>>::mutate(&kol, tag.as_ref(), |score| {
+            *score = score.with_intrinsic(intrinsic as u8);
         });
 
         Ok(())

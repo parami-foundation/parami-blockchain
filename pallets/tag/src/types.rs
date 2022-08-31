@@ -22,33 +22,34 @@ pub struct SingleMetricScore {
 #[derive(Clone, Decode, Default, Encode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct Score {
-    pub extrinsic: i32,
-    pub intrinsic: i32,
-    pub last_extrinsic: i32,
+    extrinsic: u8,
+    intrinsic: u8,
 }
 
 impl Score {
-    pub fn score(&self) -> i32 {
-        self.extrinsic + self.intrinsic
+    pub fn new(intrinsic: u8) -> Score {
+        assert!(intrinsic <= 50);
+        return Score {
+            intrinsic,
+            extrinsic: 0,
+        };
     }
 
-    pub fn accure(&self, delta: i32) -> Score {
-        use core::f32::consts::PI;
-        use num_traits::Float;
+    pub fn score(&self) -> i32 {
+        (self.extrinsic + self.intrinsic) as i32
+    }
 
-        // f[x] := ArcTan[x/50] * 200 / PI
+    pub fn accure_extrinsic(&self, rating: u8) -> Score {
+        assert!(rating <= 5);
 
-        let last_extrinsic = self.last_extrinsic + delta;
-        let extrinsic = last_extrinsic as f32 / 50.0;
-        let extrinsic = extrinsic.atan();
-        let extrinsic = extrinsic * 200.0 / PI;
+        let prev_extrinsic = self.extrinsic;
+        let scaled_rating = 10 * rating;
+        let extrinsic = (0.8 * prev_extrinsic as f32 + 0.2 * scaled_rating as f32) as u8;
 
-        let extrinsic = (extrinsic.round() * 10.0) as i32 / 10;
+        return Score { extrinsic, ..*self };
+    }
 
-        Score {
-            extrinsic,
-            last_extrinsic,
-            ..*self
-        }
+    pub fn with_intrinsic(&self, intrinsic: u8) -> Score {
+        return Score { intrinsic, ..*self };
     }
 }
