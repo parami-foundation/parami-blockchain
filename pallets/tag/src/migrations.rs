@@ -89,3 +89,66 @@ pub mod v2 {
         }
     }
 }
+
+pub mod v3 {
+    use parami_traits::Tags;
+
+    use super::*;
+
+    pub struct AddTagNameMigration<T>(sp_std::marker::PhantomData<T>);
+
+    impl<T: crate::Config> OnRuntimeUpgrade for AddTagNameMigration<T> {
+        fn on_runtime_upgrade() -> Weight {
+            let version = StorageVersion::get::<Pallet<T>>();
+            if version != 2 {
+                return 0;
+            }
+
+            let exist_tags = [
+                "Discord".as_bytes(),
+                "DeFi".as_bytes(),
+                "Ethereum".as_bytes(),
+                "Kusama".as_bytes(),
+                "Polkadot".as_bytes(),
+                "Telegram".as_bytes(),
+                "Twitter".as_bytes(),
+            ];
+
+            for tag in exist_tags {
+                Metadata::<T>::mutate_exists(Pallet::<T>::key(tag.to_vec()), |meta| {
+                    if let Some(meta) = meta {
+                        meta.tag = tag.to_vec();
+                    }
+                });
+            }
+
+            StorageVersion::put::<Pallet<T>>(&StorageVersion::new(3));
+
+            exist_tags.len().try_into().unwrap()
+        }
+
+        #[cfg(feature = "try-runtime")]
+        fn pre_upgrade() -> Result<(), &'static str> {
+            let op_meta = Pallet::<T>::get_metadata_of("Telegram".as_bytes().to_vec());
+
+            if let Some(meta) = op_meta {
+                println!("meta of Telegram before migration is {:?}", meta);
+                Ok(())
+            } else {
+                Err("Telegram's meta does not exist")
+            }
+        }
+
+        #[cfg(feature = "try-runtime")]
+        fn post_upgrade() -> Result<(), &'static str> {
+            let count = Metadata::<T>::iter_values()
+                .filter(|meta| meta.tag.len() == 0)
+                .count();
+            if count > 0 {
+                Err("there are some tag meta whose tag value does not exist")
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
