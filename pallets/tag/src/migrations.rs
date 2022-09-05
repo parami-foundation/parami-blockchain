@@ -1,9 +1,14 @@
 use crate::MetaOf;
 use crate::Metadata;
+use crate::TagHash;
 use crate::{Config, Pallet};
+use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::traits::OnRuntimeUpgrade;
 use frame_support::traits::StorageVersion;
-use frame_support::{traits::Get, weights::Weight};
+use frame_support::{traits::Get, weights::Weight, Identity, RuntimeDebug};
+use scale_info::TypeInfo;
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Saturating;
 
 pub fn migrate<T: Config>() -> Weight {
@@ -91,9 +96,31 @@ pub mod v2 {
 }
 
 pub mod v3 {
+    use crate::types;
     use parami_traits::Tags;
+    use sp_std::prelude::*;
 
     use super::*;
+
+    pub mod old {
+        use super::*;
+
+        pub type V2MetaOf<T> =
+            V2Metadata<<T as Config>::DecentralizedId, <T as frame_system::Config>::BlockNumber>;
+
+        #[derive(
+            Clone, Decode, Default, Encode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen,
+        )]
+        #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+        pub struct V2Metadata<N, V> {
+            pub creator: N,
+            pub created: V,
+        }
+
+        // The old explicit storage item.
+        #[frame_support::storage_alias]
+        pub type Metadata<T: Config> = StorageMap<Pallet<T>, Identity, TagHash, V2MetaOf<T>>;
+    }
 
     pub struct AddTagNameMigration<T>(sp_std::marker::PhantomData<T>);
 
@@ -115,12 +142,34 @@ pub mod v3 {
             ];
 
             for tag in exist_tags {
-                Metadata::<T>::mutate_exists(Pallet::<T>::key(tag.to_vec()), |meta| {
-                    if let Some(meta) = meta {
-                        meta.tag = tag.to_vec();
-                    }
-                });
+                let op_meta: Option<old::V2MetaOf<T>> =
+                    old::Metadata::<T>::get(Pallet::<T>::key(&tag.to_vec()));
+                let meta = op_meta.unwrap();
+                Metadata::<T>::insert(
+                    Pallet::<T>::key(&tag.to_vec()),
+                    types::Metadata {
+                        creator: meta.creator.clone(),
+                        created: meta.created.clone(),
+                        tag: tag.to_vec(),
+                    },
+                );
             }
+
+            // Deal with one tag that no one know the real meaning of it.
+            let unknown_tag =
+                hex::decode("82d324a29d3d3d3fe76eb33907ae9b8b940ee997c4684dc601ae8c06313a1d1d")
+                    .unwrap();
+            let unknown_tag_u8_32: [u8; 32] = unknown_tag.try_into().unwrap();
+            let op_meta = old::Metadata::<T>::get(unknown_tag_u8_32);
+            let meta = op_meta.unwrap();
+            Metadata::<T>::insert(
+                unknown_tag_u8_32,
+                types::Metadata {
+                    creator: meta.creator.clone(),
+                    created: meta.created.clone(),
+                    tag: b"unknown".to_vec(),
+                },
+            );
 
             StorageVersion::put::<Pallet<T>>(&StorageVersion::new(3));
 
@@ -129,22 +178,52 @@ pub mod v3 {
 
         #[cfg(feature = "try-runtime")]
         fn pre_upgrade() -> Result<(), &'static str> {
-            let op_meta = Pallet::<T>::get_metadata_of("Telegram".as_bytes().to_vec());
+            let count = <old::Metadata<T>>::iter().count();
+            log::info!("count of Metadata is {:?}", count);
 
-            if let Some(meta) = op_meta {
-                println!("meta of Telegram before migration is {:?}", meta);
-                Ok(())
-            } else {
-                Err("Telegram's meta does not exist")
-            }
+            let final_key: Vec<u8> =
+                <old::Metadata<T> as frame_support::storage::generator::StorageMap<
+                    TagHash,
+                    old::V2MetaOf<T>,
+                >>::storage_map_final_key(Pallet::<T>::key(
+                    &"Telegram".as_bytes().to_vec(),
+                ));
+
+            log::info!("final key is {:?}", hex::encode(&final_key));
+
+            let op_meta1 =
+                frame_support::storage::unhashed::get::<old::V2MetaOf<T>>(&final_key.as_slice());
+
+            log::info!(
+                "meta1 of Telegram before migration is {:?}",
+                op_meta1.unwrap()
+            );
+
+            let op_meta: Option<old::V2MetaOf<T>> =
+                <old::Metadata<T>>::get(Pallet::<T>::key(&"Telegram".as_bytes().to_vec()));
+
+            log::info!(
+                "meta of Telegram before migration is {:?}",
+                op_meta.unwrap()
+            );
+
+            Ok(())
         }
 
         #[cfg(feature = "try-runtime")]
         fn post_upgrade() -> Result<(), &'static str> {
             let count = Metadata::<T>::iter_values()
-                .filter(|meta| meta.tag.len() == 0)
+                .map(|meta| {
+                    log::info!(
+                        "updated meta is {:?}, tag is {}",
+                        &meta,
+                        sp_std::str::from_utf8(&meta.tag).unwrap()
+                    );
+                    meta
+                })
+                .filter(|meta| meta.tag.len() != 0)
                 .count();
-            if count > 0 {
+            if count != 8 {
                 Err("there are some tag meta whose tag value does not exist")
             } else {
                 Ok(())

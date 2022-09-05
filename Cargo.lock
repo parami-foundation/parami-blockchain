@@ -6639,6 +6639,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "hex",
+ "log",
  "num-traits",
  "pallet-balances",
  "parami-advertiser",
