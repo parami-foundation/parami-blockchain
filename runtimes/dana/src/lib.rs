@@ -101,6 +101,7 @@ pub type Executive = frame_executive::Executive<
     Runtime,
     AllPalletsWithSystem,
     (
+        parami_tag::migrations::v2::ResetHeight<Runtime>,
         parami_swap::migrations::v2::ResetHeight<Runtime>,
         parami_tag::migrations::v3::AddTagNameMigration<Runtime>,
     ),
