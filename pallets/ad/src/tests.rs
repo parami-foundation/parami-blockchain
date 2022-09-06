@@ -988,7 +988,7 @@ fn should_claim_success_when_signature_exists() {
 
         assert_eq!(
             Tag::get_score(&DID_CHARLIE, vec![0u8, 1u8, 2u8, 3u8, 4u8, 5u8]),
-            11
+            15
         );
     });
 }
