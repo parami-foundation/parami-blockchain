@@ -550,7 +550,7 @@ pub mod pallet {
 
             let scores: Vec<(Vec<u8>, i8)> = scores
                 .iter()
-                .map(|(tag, _score)| (tag.to_vec(), -5i8))
+                .map(|(tag, _score)| (tag.to_vec(), 0i8))
                 .collect();
 
             Self::pay_inner(
