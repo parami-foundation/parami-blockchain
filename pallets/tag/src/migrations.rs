@@ -5,6 +5,7 @@ use crate::PersonasOf;
 use crate::TagHash;
 use crate::{Config, Pallet};
 use codec::{Decode, Encode, MaxEncodedLen};
+use frame_support::storage::migration::{storage_iter_with_suffix, storage_key_iter};
 use frame_support::traits::OnRuntimeUpgrade;
 use frame_support::traits::StorageVersion;
 use frame_support::{traits::Get, weights::Weight};
@@ -182,13 +183,11 @@ pub mod v4 {
         fn pre_upgrade() -> Result<(), &'static str> {
             use frame_support::{log::info, migration::storage_iter_with_suffix};
 
-            // info!("zero meta count = {:?}", count);
+            let iter = storage_iter_with_suffix::<SingleMetricScore>(b"Tag", b"PersonasOf", b"");
 
-            // let iter = storage_iter_with::<SingleMetricScore>("Tag", "PersonasOf");
-
-            // for score in iter {
-            //     info!("score: {}", score);
-            // }
+            for score in iter {
+                info!("score: {:?}", score);
+            }
 
             Ok(())
         }
@@ -196,6 +195,12 @@ pub mod v4 {
         #[cfg(feature = "try-runtime")]
         fn post_upgrade() -> Result<(), &'static str> {
             use frame_support::{log::info, migration::storage_key_iter};
+
+            let iter = storage_iter_with_suffix::<Score>(b"Tag", b"PersonasOf", b"");
+
+            for score in iter {
+                info!("score: {:?}", score);
+            }
 
             Ok(())
         }
