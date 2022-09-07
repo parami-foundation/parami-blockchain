@@ -216,20 +216,6 @@ pub mod pallet {
 
             Ok(())
         }
-
-        /// Set metadata of a DID.
-        #[pallet::weight(T::WeightInfo::set_metadata(
-            key.len() as u32,
-            value.len() as u32
-        ))]
-        pub fn set_metadata(origin: OriginFor<T>, key: Vec<u8>, value: Vec<u8>) -> DispatchResult {
-            let (did, _) = EnsureDid::<T>::ensure_origin(origin)?;
-
-            let key = derive_storage_key(&key, &did);
-            sp_io::offchain_index::set(&key, &value);
-
-            Ok(())
-        }
     }
 
     #[pallet::genesis_config]

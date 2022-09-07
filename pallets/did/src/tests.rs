@@ -147,31 +147,6 @@ fn should_fail_when_revoked() {
 }
 
 #[test]
-fn should_set_metadata() {
-    const KEY: &[u8] = b"avatar";
-    const VALUE: &[u8] = b"ipfs://QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG";
-
-    let db = TestPersistentOffchainDB::new();
-    let (offchain, _state) = TestOffchainExt::with_offchain_db(db);
-    let mut t = new_test_ext();
-    t.register_extension(OffchainDbExt::new(offchain.clone()));
-
-    t.execute_with(|| {
-        assert_ok!(Did::set_metadata(
-            Origin::signed(ALICE),
-            KEY.to_vec(),
-            VALUE.to_vec()
-        ));
-    });
-
-    t.persist_offchain_overlay();
-
-    let db = t.offchain_db();
-    let avatar = db.get(&derive_storage_key(KEY, &DID_ALICE));
-    assert_eq!(avatar, Some(VALUE.to_vec()));
-}
-
-#[test]
 fn should_ensure() {
     new_test_ext().execute_with(|| {
         use frame_support::traits::EnsureOrigin;
