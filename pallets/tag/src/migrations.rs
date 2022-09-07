@@ -6,6 +6,7 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::traits::OnRuntimeUpgrade;
 use frame_support::traits::StorageVersion;
 use frame_support::{traits::Get, weights::Weight, Identity, RuntimeDebug};
+use log;
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
@@ -145,6 +146,7 @@ pub mod v3 {
                 let op_meta: Option<old::V2MetaOf<T>> =
                     old::Metadata::<T>::get(Pallet::<T>::key(&tag.to_vec()));
                 if op_meta.is_none() {
+                    log::error!("tag not existing: {:?}", tag);
                     continue;
                 }
                 let meta = op_meta.unwrap();
@@ -174,6 +176,8 @@ pub mod v3 {
                         tag: b"unknown".to_vec(),
                     },
                 );
+            } else {
+                log::error!("tag not existing: unknown tag");
             }
 
             StorageVersion::put::<Pallet<T>>(&StorageVersion::new(3));
