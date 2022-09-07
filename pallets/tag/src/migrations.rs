@@ -192,7 +192,7 @@ pub mod v4 {
 
         #[cfg(feature = "try-runtime")]
         fn post_upgrade() -> Result<(), &'static str> {
-            use frame_support::{log::info, migration::storage_key_iter};
+            use frame_support::{log::info, migration::storage_iter_with_suffix};
 
             let iter = storage_iter_with_suffix::<Score>(b"Tag", b"PersonasOf", b"");
 
