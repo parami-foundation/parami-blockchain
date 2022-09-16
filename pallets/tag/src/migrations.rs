@@ -171,7 +171,8 @@ pub mod v4 {
             }
 
             PersonasOf::<T>::translate_values(|v: SingleMetricScore| {
-                return Some(Score::new(v.current_score as u8));
+                let score = v.current_score.max(0).min(50);
+                return Some(Score::new(score as i8));
             });
 
             return 1;

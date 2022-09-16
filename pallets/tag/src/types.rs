@@ -22,13 +22,16 @@ pub struct SingleMetricScore {
 #[derive(Clone, Decode, Default, Encode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct Score {
-    extrinsic: u8,
-    intrinsic: u8,
+    extrinsic: i8,
+    intrinsic: i8,
 }
 
 impl Score {
-    pub fn new(intrinsic: u8) -> Score {
-        assert!(intrinsic <= 50);
+    const MIN_EXTRINSIC: i8 = -50;
+    const MAX_EXTRINSIC: i8 = 50;
+
+    pub fn new(intrinsic: i8) -> Score {
+        assert!(intrinsic >= 0 && intrinsic <= 50);
         return Score {
             intrinsic,
             extrinsic: 0,
@@ -39,17 +42,17 @@ impl Score {
         (self.extrinsic + self.intrinsic) as i32
     }
 
-    pub fn accure_extrinsic(&self, rating: u8) -> Score {
-        assert!(rating <= 5);
+    pub fn accure_extrinsic(&self, rating: i8) -> Score {
+        assert!(rating >= -5 && rating <= 5);
 
-        let prev_extrinsic = self.extrinsic;
-        let scaled_rating = 10 * rating;
-        let extrinsic = (0.8 * prev_extrinsic as f32 + 0.2 * scaled_rating as f32) as u8;
+        let extrinsic = (self.extrinsic + rating)
+            .min(Score::MAX_EXTRINSIC)
+            .max(Score::MIN_EXTRINSIC);
 
         return Score { extrinsic, ..*self };
     }
 
-    pub fn with_intrinsic(&self, intrinsic: u8) -> Score {
+    pub fn with_intrinsic(&self, intrinsic: i8) -> Score {
         return Score { intrinsic, ..*self };
     }
 }

@@ -347,7 +347,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             did: DidOf<T>,
             tag: Vec<u8>,
-            score: i32,
+            score: i8,
         ) -> DispatchResultWithPostInfo {
             let (registrar, _) = EnsureDid::<T>::ensure_origin(origin)?;
 

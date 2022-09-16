@@ -364,9 +364,9 @@ impl<T: Config> Tags<TagHash, AdOf<T>, T::DecentralizedId> for Pallet<T> {
         tag: K,
         rating: i32,
     ) -> DispatchResult {
-        ensure!(rating >= 0 && rating <= 5, Error::<T>::RatingOutOfRange);
+        ensure!(rating >= -5 && rating <= 5, Error::<T>::RatingOutOfRange);
         <PersonasOf<T>>::mutate(&did, tag.as_ref(), |score| {
-            *score = score.accure_extrinsic(rating as u8);
+            *score = score.accure_extrinsic(rating as i8);
         });
 
         Ok(())
@@ -394,14 +394,14 @@ impl<T: Config> Tags<TagHash, AdOf<T>, T::DecentralizedId> for Pallet<T> {
     fn submit_intrinsic<K: AsRef<Vec<u8>>>(
         kol: &T::DecentralizedId,
         tag: K,
-        intrinsic: i32,
+        intrinsic: i8,
     ) -> DispatchResult {
         ensure!(
             intrinsic >= 0 && intrinsic <= 50,
             Error::<T>::RatingOutOfRange
         );
         <PersonasOf<T>>::mutate(&kol, tag.as_ref(), |score| {
-            *score = score.with_intrinsic(intrinsic as u8);
+            *score = score.with_intrinsic(intrinsic);
         });
 
         Ok(())

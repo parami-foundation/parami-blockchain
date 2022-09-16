@@ -550,7 +550,7 @@ pub mod pallet {
 
             let scores: Vec<(Vec<u8>, i8)> = scores
                 .iter()
-                .map(|(tag, _score)| (tag.to_vec(), 0i8))
+                .map(|(tag, _score)| (tag.to_vec(), -5i8))
                 .collect();
 
             Self::pay_inner(
@@ -842,7 +842,7 @@ impl<T: Config> Pallet<T> {
         // 3. influence visitor
         for (tag, score) in scores {
             ensure!(T::Tags::has_tag(&ad_id, &tag), Error::<T>::TagNotExists);
-            ensure!(*score >= 0 && *score <= 5, Error::<T>::ScoreOutOfRange);
+            ensure!(*score >= -5 && *score <= 5, Error::<T>::ScoreOutOfRange);
 
             T::Tags::influence(&visitor, &tag, *score as i32)?;
         }
