@@ -281,6 +281,27 @@ pub mod pallet {
         }
 
         #[pallet::weight(1_000_000)]
+        pub fn force_create_did_and_bind(
+            origin: OriginFor<T>,
+            account: AccountOf<T>,
+            network: Network,
+            profile: Vec<u8>,
+        ) -> DispatchResultWithPostInfo {
+            ensure_root(origin.clone())?;
+
+            let mut did = Did::<T>::lookup_did_by_account_id(account.clone());
+            if did.is_none() {
+                Did::<T>::create(account.clone(), None)?;
+                did = Did::<T>::lookup_did_by_account_id(account.clone());
+            }
+
+            let did = did.unwrap();
+            Self::bind(origin, did, network, profile)?;
+
+            Ok(().into())
+        }
+
+        #[pallet::weight(1_000_000)]
         pub fn set_linker_account(
             origin: OriginFor<T>,
             account: AccountOf<T>,
