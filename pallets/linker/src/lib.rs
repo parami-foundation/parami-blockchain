@@ -286,8 +286,14 @@ pub mod pallet {
             account: AccountOf<T>,
             network: Network,
             profile: Vec<u8>,
+            initial_scores: Vec<(Vec<u8>, i32)>,
         ) -> DispatchResultWithPostInfo {
-            ensure_root(origin.clone())?;
+            let (registrar, _) = EnsureDid::<T>::ensure_origin(origin.clone())?;
+
+            ensure!(
+                <Registrar<T>>::get(&registrar) == Some(true),
+                Error::<T>::Blocked
+            );
 
             let mut did = Did::<T>::lookup_did_by_account_id(account.clone());
             if did.is_none() {
@@ -296,7 +302,11 @@ pub mod pallet {
             }
 
             let did = did.unwrap();
-            Self::bind(origin, did, network, profile)?;
+            Self::submit_link(origin, did, network, profile, true)?;
+
+            for (tag, score) in initial_scores {
+                T::Tags::influence(&did, &tag, score)?;
+            }
 
             Ok(().into())
         }

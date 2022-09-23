@@ -1,5 +1,6 @@
 use parami_dana_runtime::{AccountId, AuraConfig, AuraId, GenesisConfig, GrandpaConfig, Signature};
 use sc_service::ChainType;
+use sp_core::H160;
 use sp_core::{sr25519, Pair, Public};
 use sp_finality_grandpa::AuthorityId as GrandpaId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
@@ -155,6 +156,15 @@ fn testnet_genesis(
         .map(|x| (x.3.clone(), 1))
         .collect();
 
+    let account_charlie = get_account_id_from_seed::<sr25519::Public>("Charlie");
+    let did_charlie: H160 = H160([
+        0x32, 0xac, 0x79, 0x9d, //
+        0x35, 0xde, 0x72, 0xa2, //
+        0xae, 0x57, 0xa4, 0x6c, //
+        0xa9, 0x75, 0x31, 0x9f, //
+        0xbb, 0xb1, 0x25, 0xa9,
+    ]);
+
     parami_dana_runtime::GenesisConfig {
         system: parami_dana_runtime::SystemConfig {
             code: wasm_binary.to_vec(),
@@ -196,10 +206,26 @@ fn testnet_genesis(
 
         ad: Default::default(),
         advertiser: Default::default(),
-        did: Default::default(),
-        linker: Default::default(),
+        did: parami_did::GenesisConfig {
+            ids: vec![(account_charlie, did_charlie)],
+        },
+        linker: parami_linker::GenesisConfig {
+            links: Default::default(),
+            registrars: vec![did_charlie],
+        },
         nft: Default::default(),
         swap: Default::default(),
-        tag: Default::default(),
+        tag: parami_tag::GenesisConfig {
+            tag: vec![
+                b"Telegram".to_vec(),
+                b"Twitter".to_vec(),
+                b"Discord".to_vec(),
+                b"Ethereum".to_vec(),
+                b"Defi".to_vec(),
+            ],
+            tags: Default::default(),
+            personas: Default::default(),
+            influences: Default::default(),
+        },
     }
 }
