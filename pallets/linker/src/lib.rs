@@ -287,7 +287,7 @@ pub mod pallet {
             account: AccountOf<T>,
             network: Network,
             profile: Vec<u8>,
-            initial_scores: Vec<(Vec<u8>, i32)>,
+            initial_scores: Vec<(Vec<u8>, i8)>,
         ) -> DispatchResultWithPostInfo {
             let (registrar, _) = EnsureDid::<T>::ensure_origin(origin.clone())?;
 
