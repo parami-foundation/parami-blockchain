@@ -306,7 +306,7 @@ pub mod pallet {
             Self::submit_link(origin, did, network, profile, true)?;
 
             for (tag, score) in initial_scores {
-                T::Tags::influence(&did, &tag, score)?;
+                T::Tags::submit_intrinsic(&did, &tag, score)?;
             }
 
             Ok(().into())
