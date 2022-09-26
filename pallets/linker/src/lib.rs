@@ -148,6 +148,7 @@ pub mod pallet {
     #[pallet::getter(fn registrar)]
     pub(super) type Registrar<T: Config> = StorageMap<_, Identity, DidOf<T>, bool>;
 
+    // deprecated, should favor registrar, will remove later.
     #[pallet::storage]
     pub(super) type LinkerAccount<T: Config> = StorageValue<_, AccountOf<T>, OptionQuery>;
 
@@ -281,7 +282,7 @@ pub mod pallet {
         }
 
         #[pallet::weight(1_000_000)]
-        pub fn force_create_did_and_bind(
+        pub fn create_did_and_bind_by_registrar(
             origin: OriginFor<T>,
             account: AccountOf<T>,
             network: Network,
@@ -323,6 +324,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // deprecated, should favor create_and_bind_by_registar
         #[pallet::weight(0)]
         pub fn bind(
             origin: OriginFor<T>,

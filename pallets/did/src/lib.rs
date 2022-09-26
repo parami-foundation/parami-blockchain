@@ -140,7 +140,7 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Register a new DID.
-        #[pallet::weight((0, Pays::No))]
+        #[pallet::weight(T::WeightInfo::register())]
         pub fn register(
             origin: OriginFor<T>,
             referrer: Option<T::DecentralizedId>,
