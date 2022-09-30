@@ -1318,17 +1318,7 @@ pub mod v5 {
             StorageDoubleMap<Pallet<T>, Identity, H160, Blake2_256, Vec<u8>, I8Score, ValueQuery>;
     }
 
-    #[frame_support::storage_alias]
-    pub(super) type H160PersonasOf<T: Config> = StorageDoubleMap<
-        Pallet<T>,
-        Identity,
-        H160,
-        Blake2_256,
-        Vec<u8>,
-        crate::types::Score,
-        ValueQuery,
-    >;
-
+    use crate::PersonasOf;
     impl<T: Config> OnRuntimeUpgrade for FixWrongStructure<T> {
         fn on_runtime_upgrade() -> Weight {
             let version = StorageVersion::get::<Pallet<T>>();
@@ -1340,7 +1330,11 @@ pub mod v5 {
             let data = Self::data();
             for (did, tag, score) in data.into_iter() {
                 old::PersonasOf::<T>::remove(did, tag.clone());
-                H160PersonasOf::<T>::insert(did, tag, Score::new(score.min(50).max(0)));
+                PersonasOf::<T>::insert(
+                    <T::DecentralizedId>::from(did.to_fixed_bytes()),
+                    tag,
+                    Score::new(score.min(50).max(0)),
+                );
             }
 
             StorageVersion::put::<Pallet<T>>(&StorageVersion::new(5));
@@ -1366,7 +1360,7 @@ pub mod v5 {
             let data = Self::data();
 
             for (did, tag, score) in data {
-                let p = H160PersonasOf::<T>::get(did, tag);
+                let p = PersonasOf::<T>::get(T::DecentralizedId::from(did.to_fixed_bytes()), tag);
 
                 info!("p: {:?}", p);
                 assert_eq!(p.score(), score.min(50).max(0));
