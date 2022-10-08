@@ -1,4 +1,4 @@
-use crate::{AssetOf, BalanceOf, Config, Error, Metadata, Pallet, SwapOf};
+use crate::{AssetOf, BalanceOf, Config, Error, HeightOf, Metadata, Pallet, SwapOf};
 
 use frame_support::{
     ensure,
@@ -6,7 +6,10 @@ use frame_support::{
 };
 use parami_traits::Swaps;
 use sp_core::U512;
-use sp_runtime::{traits::Zero, DispatchError};
+use sp_runtime::{
+    traits::{UniqueSaturatedInto, Zero},
+    ArithmeticError, DispatchError,
+};
 
 impl<T: Config> Pallet<T> {
     pub(super) fn try_into<S, D>(value: S) -> Result<D, DispatchError>
@@ -175,5 +178,17 @@ impl<T: Config> Pallet<T> {
         let result = Self::try_into(result)?;
 
         Ok(result)
+    }
+
+    pub(super) fn calculate_liquidity_share(
+        block_duration: HeightOf<T>,
+        liquidity: BalanceOf<T>,
+    ) -> BalanceOf<T> {
+        let block_duration: u128 = block_duration.unique_saturated_into();
+        let liquidity: u128 = liquidity.unique_saturated_into();
+
+        return BalanceOf::<T>::try_from(block_duration * liquidity)
+            .map_err(|e| ArithmeticError::Overflow)
+            .unwrap();
     }
 }

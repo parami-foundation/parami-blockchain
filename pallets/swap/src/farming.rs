@@ -130,8 +130,14 @@ impl<T: Config> Pallet<T> {
         );
 
         let reward: U512 = Self::try_into(reward)?;
-        let numerator: U512 = Self::try_into(liquidity.amount)?;
-        let denominator: U512 = Self::try_into(meta.liquidity)?;
+        let numerator: U512 = Self::try_into(Pallet::<T>::calculate_liquidity_share(
+            height - claimed,
+            liquidity.amount,
+        ))?;
+        let denominator: U512 = Self::try_into(
+            meta.liquidity_share
+                + Pallet::<T>::calculate_liquidity_share(height - meta.updated_at, meta.liquidity),
+        )?;
 
         let reward = reward * numerator / denominator;
 

@@ -8,7 +8,9 @@ use sp_runtime::RuntimeDebug;
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct Swap<N, B> {
     pub created: N,
+    pub updated_at: N,
     pub liquidity: B,
+    pub liquidity_share: B,
 }
 
 #[derive(Clone, Decode, Default, Encode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
