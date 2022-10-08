@@ -107,3 +107,55 @@ pub mod v2 {
         }
     }
 }
+
+pub mod v3 {
+
+    use crate::{Metadata, SwapOf};
+
+    use super::*;
+
+    pub struct AddLiquidityShare<T>(sp_std::marker::PhantomData<T>);
+
+    impl<T: crate::Config> OnRuntimeUpgrade for AddLiquidityShare<T> {
+        fn on_runtime_upgrade() -> Weight {
+            let version = StorageVersion::get::<Pallet<T>>();
+            if version != 2 {
+                return 0;
+            }
+
+            let current_block = <frame_system::Pallet<T>>::block_number();
+
+            Metadata::<T>::translate_values(|m: SwapOf<T>| {
+                Some(SwapOf::<T> {
+                    updated_at: current_block,
+                    liquidity_share: Pallet::<T>::calculate_liquidity_share(
+                        current_block - m.created,
+                        m.liquidity,
+                    ),
+                    ..m
+                })
+            });
+
+            StorageVersion::put::<Pallet<T>>(&StorageVersion::new(3));
+            1
+        }
+
+        #[cfg(feature = "try-runtime")]
+        fn pre_upgrade() -> Result<(), &'static str> {
+            let version = StorageVersion::get::<Pallet<T>>();
+            assert_eq!(version, 2);
+        }
+
+        #[cfg(feature = "try-runtime")]
+        fn post_upgrade() -> Result<(), &'static str> {
+            use log::info;
+
+            let version = StorageVersion::get::<Pallet<T>>();
+            assert_eq!(version, 3);
+
+            for (asset_id, swap) in Metadata::<T>::iter() {
+                info!("asset_id: {:?}, swap: {:?}", asset_id, swap);
+            }
+        }
+    }
+}
