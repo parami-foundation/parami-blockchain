@@ -564,3 +564,24 @@ fn should_reward_less_than_total_for_multiple_stakes() {
         assert!(actual_token <= total_reward);
     });
 }
+
+#[test]
+fn should_initialize_contribution_correctly() {
+    new_test_ext().execute_with(|| {
+        let token = 1;
+
+        System::set_block_number(20);
+        assert_ok!(Swap::create(Origin::signed(ALICE), token));
+        assert_ok!(Swap::add_liquidity(
+            Origin::signed(ALICE),
+            token,
+            20,
+            20,
+            2,
+            100,
+        ));
+
+        let meta = <Metadata<Test>>::get(&token).unwrap();
+        assert_eq!(meta.liquidity_contribution, 0);
+    });
+}
