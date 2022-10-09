@@ -52,7 +52,7 @@ impl<T: Config> Swaps<AccountOf<T>> for Pallet<T> {
                 created,
                 updated_at: created,
                 liquidity: Zero::zero(),
-                liquidity_share: Zero::zero(),
+                liquidity_contribution: Zero::zero(),
             },
         );
 
@@ -141,11 +141,9 @@ impl<T: Config> Swaps<AccountOf<T>> for Pallet<T> {
             holding.saturating_accrue(liquidity);
         });
 
-        meta.liquidity_share
-            .saturating_accrue(Pallet::<T>::calculate_liquidity_share(
-                minted - meta.updated_at,
-                meta.liquidity,
-            ));
+        meta.liquidity_contribution.saturating_accrue(
+            Pallet::<T>::calculate_liquidity_contribution(minted - meta.updated_at, meta.liquidity),
+        );
         meta.updated_at = minted;
         meta.liquidity.saturating_accrue(liquidity);
         <Metadata<T>>::insert(token_id, meta);
@@ -206,11 +204,12 @@ impl<T: Config> Swaps<AccountOf<T>> for Pallet<T> {
 
         let current_block = <frame_system::Pallet<T>>::block_number();
 
-        meta.liquidity_share
-            .saturating_accrue(Pallet::<T>::calculate_liquidity_share(
+        meta.liquidity_contribution.saturating_accrue(
+            Pallet::<T>::calculate_liquidity_contribution(
                 current_block - meta.updated_at,
                 meta.liquidity,
-            ));
+            ),
+        );
         meta.liquidity.saturating_reduce(liquidity.amount);
         meta.updated_at = current_block;
 

@@ -128,7 +128,7 @@ pub mod v3 {
             Metadata::<T>::translate_values(|m: SwapOf<T>| {
                 Some(SwapOf::<T> {
                     updated_at: current_block,
-                    liquidity_share: Pallet::<T>::calculate_liquidity_share(
+                    liquidity_contribution: Pallet::<T>::calculate_liquidity_contribution(
                         current_block - m.created,
                         m.liquidity,
                     ),

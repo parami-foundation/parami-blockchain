@@ -441,7 +441,7 @@ fn should_not_overflow_when_calculating_price() {
 }
 
 #[test]
-fn should_have_correct_liquidity_share() {
+fn should_have_correct_liquidity_contribution() {
     new_test_ext().execute_with(|| {
         let token = 1;
 
@@ -458,7 +458,7 @@ fn should_have_correct_liquidity_share() {
 
         let meta = <Metadata<Test>>::get(&token).unwrap();
         assert_eq!(meta.liquidity, 20);
-        assert_eq!(meta.liquidity_share, 0);
+        assert_eq!(meta.liquidity_contribution, 0);
 
         System::set_block_number(10);
 
@@ -473,7 +473,7 @@ fn should_have_correct_liquidity_share() {
 
         let meta = <Metadata<Test>>::get(&token).unwrap();
         assert_eq!(meta.liquidity, 30);
-        assert_eq!(meta.liquidity_share, 20 * 10);
+        assert_eq!(meta.liquidity_contribution, 20 * 10);
 
         System::set_block_number(15);
 
@@ -487,7 +487,7 @@ fn should_have_correct_liquidity_share() {
 
         let meta = <Metadata<Test>>::get(&token).unwrap();
         assert_eq!(meta.liquidity, 20);
-        assert_eq!(meta.liquidity_share, 20 * 10 + 30 * 5);
+        assert_eq!(meta.liquidity_contribution, 20 * 10 + 30 * 5);
 
         System::set_block_number(20);
 
@@ -502,7 +502,7 @@ fn should_have_correct_liquidity_share() {
 
         let meta = <Metadata<Test>>::get(&token).unwrap();
         assert_eq!(meta.liquidity, 40);
-        assert_eq!(meta.liquidity_share, 20 * 10 + 30 * 5 + 20 * 5);
+        assert_eq!(meta.liquidity_contribution, 20 * 10 + 30 * 5 + 20 * 5);
     });
 }
 
@@ -526,7 +526,7 @@ fn should_reward_less_than_total_for_multiple_stakes() {
 
         let meta = <Metadata<Test>>::get(&token).unwrap();
         assert_eq!(meta.liquidity, 50);
-        assert_eq!(meta.liquidity_share, 0);
+        assert_eq!(meta.liquidity_contribution, 0);
 
         System::set_block_number(10);
 
@@ -554,12 +554,12 @@ fn should_reward_less_than_total_for_multiple_stakes() {
             println!("token {}, {}", lp_token_id, token);
         }
 
-        let total_liquidity_share = 5 * 10 * 10 + 100 * 10;
+        let total_liquidity_contribution = 5 * 10 * 10 + 100 * 10;
 
         assert_eq!(
             actual_token,
-            10 * 20 * total_reward / total_liquidity_share * 5
-                + 50 * 10 * total_reward / total_liquidity_share
+            10 * 20 * total_reward / total_liquidity_contribution * 5
+                + 50 * 10 * total_reward / total_liquidity_contribution
         );
         assert!(actual_token <= total_reward);
     });

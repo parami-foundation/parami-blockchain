@@ -180,7 +180,7 @@ impl<T: Config> Pallet<T> {
         Ok(result)
     }
 
-    pub(super) fn calculate_liquidity_share(
+    pub(super) fn calculate_liquidity_contribution(
         block_duration: HeightOf<T>,
         liquidity: BalanceOf<T>,
     ) -> BalanceOf<T> {
