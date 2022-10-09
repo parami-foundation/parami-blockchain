@@ -1,4 +1,4 @@
-use crate::{mock::*, Account, Error, Liquidity, Metadata, Provider};
+use crate::{mock::*, Account, Error, FarmingCurve, Liquidity, Metadata, Provider};
 use frame_support::{
     assert_noop, assert_ok,
     traits::{tokens::fungibles::Mutate as FungMutate, Currency},
@@ -437,5 +437,130 @@ fn should_not_overflow_when_calculating_price() {
             Assets::balance(token, &ALICE),
             3_000_000_000_000_000_000_000_000_000u128
         );
+    });
+}
+
+#[test]
+fn should_have_correct_liquidity_share() {
+    new_test_ext().execute_with(|| {
+        let token = 1;
+
+        assert_ok!(Swap::create(Origin::signed(ALICE), token));
+
+        assert_ok!(Swap::add_liquidity(
+            Origin::signed(ALICE),
+            token,
+            20,
+            20,
+            2,
+            100,
+        ));
+
+        let meta = <Metadata<Test>>::get(&token).unwrap();
+        assert_eq!(meta.liquidity, 20);
+        assert_eq!(meta.liquidity_share, 0);
+
+        System::set_block_number(10);
+
+        assert_ok!(Swap::add_liquidity(
+            Origin::signed(ALICE),
+            token,
+            10,
+            10,
+            1,
+            100,
+        ));
+
+        let meta = <Metadata<Test>>::get(&token).unwrap();
+        assert_eq!(meta.liquidity, 30);
+        assert_eq!(meta.liquidity_share, 20 * 10);
+
+        System::set_block_number(15);
+
+        assert_ok!(Swap::remove_liquidity(
+            Origin::signed(ALICE),
+            token,
+            10,
+            1,
+            100,
+        ));
+
+        let meta = <Metadata<Test>>::get(&token).unwrap();
+        assert_eq!(meta.liquidity, 20);
+        assert_eq!(meta.liquidity_share, 20 * 10 + 30 * 5);
+
+        System::set_block_number(20);
+
+        assert_ok!(Swap::add_liquidity(
+            Origin::signed(ALICE),
+            token,
+            20,
+            20,
+            2,
+            100,
+        ));
+
+        let meta = <Metadata<Test>>::get(&token).unwrap();
+        assert_eq!(meta.liquidity, 40);
+        assert_eq!(meta.liquidity_share, 20 * 10 + 30 * 5 + 20 * 5);
+    });
+}
+
+#[test]
+fn should_reward_less_than_total_for_multiple_stakes() {
+    new_test_ext().execute_with(|| {
+        let token = 1;
+
+        assert_ok!(Swap::create(Origin::signed(ALICE), token));
+
+        for _ in 0..5 {
+            assert_ok!(Swap::add_liquidity(
+                Origin::signed(ALICE),
+                token,
+                10,
+                10,
+                1,
+                100
+            ));
+        }
+
+        let meta = <Metadata<Test>>::get(&token).unwrap();
+        assert_eq!(meta.liquidity, 50);
+        assert_eq!(meta.liquidity_share, 0);
+
+        System::set_block_number(10);
+
+        assert_ok!(Swap::add_liquidity(
+            Origin::signed(ALICE),
+            token,
+            50,
+            50,
+            5,
+            100
+        ));
+
+        System::set_block_number(20);
+
+        let meta = <Metadata<Test>>::get(&token).unwrap();
+        let total_reward =
+            <Test as crate::Config>::FarmingCurve::calculate_farming_reward(meta.created, 0, 20, 0);
+
+        assert_eq!(total_reward, 100);
+
+        let mut actual_token = 0;
+        for lp_token_id in 0..6 {
+            let (_, token) = Swap::calculate_reward(lp_token_id).unwrap();
+            actual_token += token;
+            println!("token {}, {}", lp_token_id, token);
+        }
+
+        let total_liquidity_share = 5 * 10 * 10 + 100 * 10;
+
+        assert_eq!(
+            actual_token,
+            10 * 20 * total_reward / total_liquidity_share * 5
+                + 50 * 10 * total_reward / total_liquidity_share
+        );
+        assert!(actual_token <= total_reward);
     });
 }
