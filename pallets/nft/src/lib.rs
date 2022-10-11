@@ -522,6 +522,33 @@ pub mod pallet {
         }
 
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
+        pub fn force_submit_ported_nft(
+            origin: OriginFor<T>,
+            did: DidOf<T>,
+            network: Network,
+            namespace: Vec<u8>,
+            token: Vec<u8>,
+        ) -> DispatchResultWithPostInfo {
+            ensure_root(origin)?;
+
+            let id = Self::create(did)?;
+
+            <Ported<T>>::insert((network, namespace.clone(), token.clone()), id);
+
+            <External<T>>::insert(
+                id,
+                types::External {
+                    network,
+                    namespace: namespace.clone(),
+                    token: token.clone(),
+                    owner: did,
+                },
+            );
+
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
         pub fn submit_porting(
             origin: OriginFor<T>,
             did: DidOf<T>,
