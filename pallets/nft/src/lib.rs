@@ -399,6 +399,50 @@ pub mod pallet {
             Ok(())
         }
 
+        /// Back (support) the KOL To A Certain Balance
+        #[pallet::weight(<T as Config>::WeightInfo::back())]
+        pub fn back_to(
+            origin: OriginFor<T>,
+            nft: NftOf<T>,
+            #[pallet::compact] expected_balance: BalanceOf<T>,
+        ) -> DispatchResult {
+            let (did, who) = EnsureDid::<T>::ensure_origin(origin)?;
+
+            let meta = <Metadata<T>>::get(nft).ok_or(Error::<T>::NotExists)?;
+
+            ensure!(!meta.minted, Error::<T>::Minted);
+
+            let deposit = T::Currency::free_balance(&meta.pot);
+
+            if deposit >= expected_balance {
+                return Ok(());
+            }
+
+            let value = expected_balance.saturating_sub(deposit);
+
+            T::Currency::transfer(&who, &meta.pot, value, KeepAlive)?;
+
+            <Deposit<T>>::mutate(nft, |maybe| {
+                if let Some(deposit) = maybe {
+                    deposit.saturating_accrue(value);
+                } else {
+                    *maybe = Some(value);
+                }
+            });
+
+            <Deposits<T>>::mutate(nft, &did, |maybe| {
+                if let Some(deposit) = maybe {
+                    deposit.saturating_accrue(value);
+                } else {
+                    *maybe = Some(value);
+                }
+            });
+
+            Self::deposit_event(Event::Backed(did, nft, value));
+
+            Ok(())
+        }
+
         /// Fragment the NFT and mint token.
         /// TODO(ironman_ch): add tests for one creator mint multi nft.
         #[pallet::weight(<T as Config>::WeightInfo::mint(name.len() as u32, symbol.len() as u32))]
