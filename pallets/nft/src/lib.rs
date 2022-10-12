@@ -412,7 +412,7 @@ pub mod pallet {
 
             ensure!(!meta.minted, Error::<T>::Minted);
 
-            let deposit = T::Currency::free_balance(&meta.pot);
+            let deposit = Deposit::<T>::get(nft)?;
 
             if deposit >= expected_balance {
                 return Ok(());
