@@ -412,7 +412,7 @@ pub mod pallet {
 
             ensure!(!meta.minted, Error::<T>::Minted);
 
-            let deposit = Deposit::<T>::get(nft)?;
+            let deposit = Deposit::<T>::get(nft).unwrap_or(0u32.into());
 
             if deposit >= expected_balance {
                 return Ok(());
@@ -464,7 +464,8 @@ pub mod pallet {
                 Error::<T>::BadMetadata
             );
 
-            let is_valid_char = |c: &u8| c.is_ascii_whitespace() || c.is_ascii_alphanumeric();
+            let is_valid_char =
+                |c: &u8| c.is_ascii_whitespace() || c.is_ascii_alphanumeric() || *c == b'_';
 
             ensure!(name.iter().all(is_valid_char), Error::<T>::BadMetadata);
             ensure!(symbol.iter().all(is_valid_char), Error::<T>::BadMetadata);
@@ -574,6 +575,11 @@ pub mod pallet {
             token: Vec<u8>,
         ) -> DispatchResultWithPostInfo {
             ensure_root(origin)?;
+
+            ensure!(
+                <Ported<T>>::get((network, namespace.clone(), token.clone())).is_none(),
+                Error::<T>::Exists
+            );
 
             let id = Self::create(did)?;
 
