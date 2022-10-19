@@ -37,7 +37,7 @@ pub struct AssetRewardActivity<A, H, B> {
 type StakingActivityOf<T> = AssetRewardActivity<AssetIdOf<T>, HeightOf<T>, BalanceOf<T>>;
 
 //7 days
-const DURATION: u32 = 7 * 24 * 60 * 5;
+const DURATION_IN_BLOCK_NUM: u32 = 7 * 24 * 60 * 5;
 
 /**
  * This const is the normalized INIT_DAILY_OUTPUT, and the normalized total amount is 1_000_000.
@@ -50,6 +50,7 @@ const DURATION: u32 = 7 * 24 * 60 * 5;
  * 1. x = INIT_DAILY_OUTPUT
  * 2. n = 365/7 * 3 = 156 weeks
  * 3. S = 1_000_000
+ * 4. half per week
  *
  * x + x/2 + x / 2^2 + ... + x/2^156 = 1_000_000
  *
@@ -59,7 +60,7 @@ const DURATION: u32 = 7 * 24 * 60 * 5;
  *
  * 1_000_000 * (1 - 1/2) = x - x * (1 / 2^157)
  *
- * so x = 500_000
+ * so x ~= 500_000
  *
  *
  * In Chinese
@@ -67,14 +68,15 @@ const DURATION: u32 = 7 * 24 * 60 * 5;
  * 1. 设 x 为第一周释放量
  * 2. 三年总共365/7 * 3 = 156周
  * 3. 按照3年释放100W币来做归一化，方便各中值的计算
+ * 4. 每周发放量减半
  *
  * x + x/2 + x / 2^2 + ... + x/2^156 = 1_000_000
  *
  * 根据等比数列规律: (1 - q) * S = a1 - a_n+1，即S = (a1 - a_n+1) / 1 - q
  *
- * 带入该公式：1_000_000 = (x - x/2^157) / (1 - 1/2) -> x = 500_000 / (1 - 1/2^157) ~ 500_000
+ * 带入该公式：1_000_000 = (x - x/2^157) / (1 - 1/2) -> x = 500_000 / (1 - 1/2^157) ~= 500_000
  */
-const ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT: u128 = 500_000u128 * 10 ^ 18;
+const ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT: u128 = (500_000u128 * 10 ^ 18) / 7;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -153,12 +155,25 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {}
 
     impl<T: Config> Pallet<T> {
+        /*
+        uint256 public constant DURATION = 7 days;
+        uint256 public earnings_per_share; //每股分红
+        uint256 public lastblock; //上次修改每股分红的时间
+        uint256 public starttime = 111; //
+        uint256 public DailyOutput = 1428 * 1e18; //10000/7
+        uint256 public Halvetime; //减半的时间
+
+        constructor ()public{
+            Halvetime = block.timestamp + DURATION;
+        }
+        */
+
         pub fn start(asset_id: AssetIdOf<T>) -> Result<(), DispatchError> {
             let already_exists = <StakingActivityStore<T>>::contains_key(asset_id);
             ensure!(!already_exists, Error::<T>::ActivityAlreadyExists);
 
             let cur_blocknum = <frame_system::Pallet<T>>::block_number();
-            let duration = HeightOf::<T>::from(DURATION);
+            let duration = HeightOf::<T>::from(DURATION_IN_BLOCK_NUM);
             let daily_output = BalanceOf::<T>::try_from(ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT)
                 .map_err(|_| Error::<T>::TypeCastError)?;
 
@@ -177,10 +192,10 @@ pub mod pallet {
             Ok(())
         }
 
-        /**
-        * function getPerBlockOutput() public view returns (uint256) {
+        /*
+         function getPerBlockOutput() public view returns (uint256) {
                return DailyOutput.div(6646);// 13秒1个区块,每天大概是6646个区块 //https://etherscan.io/chart/blocktime
-           }
+         }
         */
         pub fn get_per_block_output(asset_id: AssetIdOf<T>) -> Result<BalanceOf<T>, DispatchError> {
             let activity =
@@ -189,8 +204,8 @@ pub mod pallet {
             Ok(activity.daily_output / 7200u32.into())
         }
 
-        /**
-         *function getprofit() private returns (uint256) {
+        /*
+         function getprofit() private returns (uint256) {
             if (block.timestamp > Halvetime){
                 DailyOutput = DailyOutput.div(2); //减半
                 Halvetime = block.timestamp + DURATION;
@@ -211,7 +226,7 @@ pub mod pallet {
                 <StakingActivityStore<T>>::mutate(activity.asset_id, |activity| {
                     if let Some(activity) = activity {
                         activity.daily_output = activity.daily_output / 2u32.into();
-                        activity.halve_time = cur_block_num + DURATION.into();
+                        activity.halve_time = cur_block_num + DURATION_IN_BLOCK_NUM.into();
                     }
                 });
             }
@@ -235,8 +250,8 @@ pub mod pallet {
             Ok(profit)
         }
 
-        /**
-        * modifier make_profit() {
+        /*
+            modifier make_profit() {
                uint256 amount = getprofit();
                if (amount > 0) {
                    yfi.mint(address(this), amount);
@@ -274,7 +289,7 @@ pub mod pallet {
             Ok(())
         }
 
-        /**
+        /*
         refer to YearnRewards's stake implementation:
 
         require(block.timestamp >starttime,"not start");
@@ -288,7 +303,7 @@ pub mod pallet {
         }
         super.stake(amount);
         emit Staked(msg.sender, amount);
-         */
+        */
         pub fn stake(
             amount: BalanceOf<T>,
             asset_id: AssetIdOf<T>,
@@ -324,8 +339,8 @@ pub mod pallet {
             // TODO(ironman_ch): emit Staked(msg.sender, amount);
         }
 
-        /**
-        * function withdraw(uint256 amount) public make_profit
+        /*
+         function withdraw(uint256 amount) public make_profit
            {
                require(amount > 0, "Cannot withdraw 0");
                getReward();
@@ -361,8 +376,8 @@ pub mod pallet {
             Ok(())
         }
 
-        /**
-        * function exit() external {
+        /*
+         function exit() external {
                withdraw(balanceOf(msg.sender));
            }
         */
@@ -372,8 +387,8 @@ pub mod pallet {
             Ok(())
         }
 
-        /**
-        * function getReward() public make_profit  {
+        /*
+         function getReward() public make_profit  {
                uint256 reward = earned(msg.sender);
                if (reward > 0) {
                    rewards[msg.sender] = earnings_per_share.mul(balanceOf(msg.sender));
@@ -405,8 +420,8 @@ pub mod pallet {
             Ok(reward)
         }
 
-        /**
-        * function earned(address account) public view returns (uint256) {
+        /*
+         function earned(address account) public view returns (uint256) {
                uint256 _cal = earnings_per_share.mul(balanceOf(account));
                if (_cal < rewards[msg.sender]) {
                    return 0;
@@ -428,7 +443,7 @@ pub mod pallet {
             }
         }
 
-        /**
+        /*
         function stake(uint256 amount) public {
             _totalSupply = _totalSupply.add(amount);
             _balances[msg.sender] = _balances[msg.sender].add(amount);
