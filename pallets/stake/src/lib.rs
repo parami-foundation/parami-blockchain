@@ -4,16 +4,21 @@ mod mock;
 mod tests;
 
 use codec::{Decode, Encode, MaxEncodedLen};
-use frame_support::traits::{
-    tokens::fungibles::{
-        InspectMetadata as FungMeta, Mutate as FungMutate, Transfer as FungTransfer,
+use frame_support::{
+    traits::{
+        tokens::fungibles::{
+            InspectMetadata as FungMeta, Mutate as FungMutate, Transfer as FungTransfer,
+        },
+        Currency,
     },
-    Currency,
+    PalletId,
 };
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_runtime::traits::{AtLeast32BitUnsigned, Bounded, Saturating, Zero};
+use sp_runtime::traits::{
+    AccountIdConversion, AtLeast32BitUnsigned, Bounded, Hash, Saturating, Zero,
+};
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
 
@@ -24,8 +29,10 @@ type BalanceOf<T> = <<T as pallet::Config>::Currency as Currency<AccountOf<T>>>:
 
 #[derive(Clone, Decode, Default, Encode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct AssetRewardActivity<A, H, B> {
+pub struct StakingActivity<A, AC, H, B> {
     pub asset_id: A,
+    pub reward_total_amount: B,
+    pub reward_pot: AC,
     pub start_block_num: H,
     pub halve_time: H,
     pub lastblock: H,
@@ -34,7 +41,7 @@ pub struct AssetRewardActivity<A, H, B> {
     pub daily_output: B,
 }
 
-type StakingActivityOf<T> = AssetRewardActivity<AssetIdOf<T>, HeightOf<T>, BalanceOf<T>>;
+type StakingActivityOf<T> = StakingActivity<AssetIdOf<T>, AccountOf<T>, HeightOf<T>, BalanceOf<T>>;
 
 //7 days
 const DURATION_IN_BLOCK_NUM: u32 = 7 * 24 * 60 * 5;
@@ -103,6 +110,10 @@ pub mod pallet {
         type Assets: FungMeta<AccountOf<Self>, AssetId = AssetIdOf<Self>>
             + FungMutate<AccountOf<Self>, AssetId = Self::AssetId, Balance = BalanceOf<Self>>
             + FungTransfer<AccountOf<Self>, AssetId = AssetIdOf<Self>, Balance = BalanceOf<Self>>;
+
+        /// The pallet id, used for deriving "pot" accounts of staking activity's reward
+        #[pallet::constant]
+        type PalletId: Get<PalletId>;
     }
 
     #[pallet::pallet]
@@ -168,7 +179,10 @@ pub mod pallet {
         }
         */
 
-        pub fn start(asset_id: AssetIdOf<T>) -> Result<(), DispatchError> {
+        pub fn start(
+            asset_id: AssetIdOf<T>,
+            reward_total_amount: BalanceOf<T>,
+        ) -> Result<(), DispatchError> {
             let already_exists = <StakingActivityStore<T>>::contains_key(asset_id);
             ensure!(!already_exists, Error::<T>::ActivityAlreadyExists);
 
@@ -179,8 +193,10 @@ pub mod pallet {
 
             <StakingActivityStore<T>>::insert(
                 asset_id,
-                AssetRewardActivity {
+                StakingActivity {
                     asset_id,
+                    reward_total_amount,
+                    reward_pot: Self::to_staking_reward_pot(&asset_id),
                     start_block_num: cur_blocknum,
                     halve_time: cur_blocknum.saturating_add(duration),
                     lastblock: HeightOf::<T>::zero(),
@@ -272,6 +288,9 @@ pub mod pallet {
                 <StakingActivityStore<T>>::get(asset_id).ok_or(Error::<T>::ActivityNotExists)?;
             let amount = Self::get_profit(&activity)?;
             if amount > Zero::zero() {
+                let pot = Self::to_staking_reward_pot(&asset_id);
+                T::Assets::mint_into(asset_id, &pot, amount)?;
+
                 if activity.total_supply == Zero::zero() {
                     <StakingActivityStore<T>>::mutate(asset_id, |activity| {
                         if let Some(activity) = activity {
@@ -481,12 +500,19 @@ pub mod pallet {
             <UserStakingBalanceStore<T>>::get(asset_id, account)
         }
 
+        fn to_staking_reward_pot(asset_id: &AssetIdOf<T>) -> AccountOf<T> {
+            let asset_id_raw = <AssetIdOf<T>>::encode(&asset_id);
+            let hash = <T as frame_system::Config>::Hashing::hash(&asset_id_raw);
+            <T as Config>::PalletId::get().into_sub_account_truncating(hash)
+        }
+
         fn transfer_to(
             asset_id: AssetIdOf<T>,
             account: &AccountOf<T>,
             amount: BalanceOf<T>,
         ) -> Result<(), DispatchError> {
-            T::Assets::mint_into(asset_id, account, amount)?;
+            let activity_reward_pot = Self::to_staking_reward_pot(&asset_id);
+            T::Assets::transfer(asset_id, &activity_reward_pot, account, amount, false)?;
             Ok(())
         }
     }
