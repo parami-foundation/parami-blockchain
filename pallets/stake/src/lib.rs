@@ -38,8 +38,43 @@ type StakingActivityOf<T> = AssetRewardActivity<AssetIdOf<T>, HeightOf<T>, Balan
 
 //7 days
 const DURATION: u32 = 7 * 24 * 60 * 5;
-//TODO(ironman_ch): change INIT_DAILY_OUTPUT as parami's requirement
-const INIT_DAILY_OUTPUT: u128 = 1428u128 * 10 ^ 18;
+
+/**
+ * This const is the normalized INIT_DAILY_OUTPUT, and the normalized total amount is 1_000_000.
+ *
+ * In English:
+ *
+ * As summation of proportional series, we can resolve the INIT_DAILY_OUTPUT
+ *
+ * Assumptions:
+ * 1. x = INIT_DAILY_OUTPUT
+ * 2. n = 365/7 * 3 = 156 weeks
+ * 3. S = 1_000_000
+ *
+ * x + x/2 + x / 2^2 + ... + x/2^156 = 1_000_000
+ *
+ * as summation of proportional series says: S * (1 - q) = a1 - a_n+1
+ *
+ * bring in the variables:
+ *
+ * 1_000_000 * (1 - 1/2) = x - x * (1 / 2^157)
+ *
+ * so x = 500_000
+ *
+ *
+ * In Chinese
+ * 根据等比数列求和公式，求解一下等比数列的和
+ * 1. 设 x 为第一周释放量
+ * 2. 三年总共365/7 * 3 = 156周
+ * 3. 按照3年释放100W币来做归一化，方便各中值的计算
+ *
+ * x + x/2 + x / 2^2 + ... + x/2^156 = 1_000_000
+ *
+ * 根据等比数列规律: (1 - q) * S = a1 - a_n+1，即S = (a1 - a_n+1) / 1 - q
+ *
+ * 带入该公式：1_000_000 = (x - x/2^157) / (1 - 1/2) -> x = 500_000 / (1 - 1/2^157) ~ 500_000
+ */
+const ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT: u128 = 500_000u128 * 10 ^ 18;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -76,7 +111,7 @@ pub mod pallet {
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {}
 
     #[pallet::storage]
-    pub(super) type StakingActivity<T: Config> = StorageMap<
+    pub(super) type StakingActivityStore<T: Config> = StorageMap<
         _,
         Twox64Concat,
         AssetIdOf<T>, // Asset ID
@@ -84,7 +119,7 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    pub(super) type UserStakingRewards<T: Config> = StorageDoubleMap<
+    pub(super) type UserStakingRewardStore<T: Config> = StorageDoubleMap<
         _,
         Twox64Concat,
         AssetIdOf<T>,
@@ -95,7 +130,7 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    pub(super) type UserStakingBalances<T: Config> = StorageDoubleMap<
+    pub(super) type UserStakingBalanceStore<T: Config> = StorageDoubleMap<
         _,
         Twox64Concat,
         AssetIdOf<T>,
@@ -119,15 +154,15 @@ pub mod pallet {
 
     impl<T: Config> Pallet<T> {
         pub fn start(asset_id: AssetIdOf<T>) -> Result<(), DispatchError> {
-            let already_exists = <StakingActivity<T>>::contains_key(asset_id);
+            let already_exists = <StakingActivityStore<T>>::contains_key(asset_id);
             ensure!(!already_exists, Error::<T>::ActivityAlreadyExists);
 
             let cur_blocknum = <frame_system::Pallet<T>>::block_number();
             let duration = HeightOf::<T>::from(DURATION);
-            let daily_output = BalanceOf::<T>::try_from(INIT_DAILY_OUTPUT)
+            let daily_output = BalanceOf::<T>::try_from(ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT)
                 .map_err(|_| Error::<T>::TypeCastError)?;
 
-            <StakingActivity<T>>::insert(
+            <StakingActivityStore<T>>::insert(
                 asset_id,
                 AssetRewardActivity {
                     asset_id,
@@ -149,7 +184,7 @@ pub mod pallet {
         */
         pub fn get_per_block_output(asset_id: AssetIdOf<T>) -> Result<BalanceOf<T>, DispatchError> {
             let activity =
-                <StakingActivity<T>>::get(asset_id).ok_or(Error::<T>::ActivityNotExists)?;
+                <StakingActivityStore<T>>::get(asset_id).ok_or(Error::<T>::ActivityNotExists)?;
             //one block per 12 seconds, so 1 day has 7200 blocks
             Ok(activity.daily_output / 7200u32.into())
         }
@@ -173,7 +208,7 @@ pub mod pallet {
         fn get_profit(activity: &StakingActivityOf<T>) -> Result<BalanceOf<T>, DispatchError> {
             let cur_block_num = <frame_system::Pallet<T>>::block_number();
             if cur_block_num > activity.halve_time {
-                <StakingActivity<T>>::mutate(activity.asset_id, |activity| {
+                <StakingActivityStore<T>>::mutate(activity.asset_id, |activity| {
                     if let Some(activity) = activity {
                         activity.daily_output = activity.daily_output / 2u32.into();
                         activity.halve_time = cur_block_num + DURATION.into();
@@ -190,7 +225,7 @@ pub mod pallet {
                 .try_into()
                 .map_err(|_| Error::<T>::TypeCastError)?;
 
-            <StakingActivity<T>>::mutate(activity.asset_id, |activity| {
+            <StakingActivityStore<T>>::mutate(activity.asset_id, |activity| {
                 if let Some(activity) = activity {
                     activity.lastblock = new_blocknum;
                 }
@@ -219,17 +254,17 @@ pub mod pallet {
         */
         fn make_profit(asset_id: AssetIdOf<T>) -> Result<(), DispatchError> {
             let activity =
-                <StakingActivity<T>>::get(asset_id).ok_or(Error::<T>::ActivityNotExists)?;
+                <StakingActivityStore<T>>::get(asset_id).ok_or(Error::<T>::ActivityNotExists)?;
             let amount = Self::get_profit(&activity)?;
             if amount > Zero::zero() {
                 if activity.total_supply == Zero::zero() {
-                    <StakingActivity<T>>::mutate(asset_id, |activity| {
+                    <StakingActivityStore<T>>::mutate(asset_id, |activity| {
                         if let Some(activity) = activity {
                             activity.earnings_per_share = Zero::zero();
                         }
                     });
                 } else {
-                    <StakingActivity<T>>::mutate(asset_id, |activity| {
+                    <StakingActivityStore<T>>::mutate(asset_id, |activity| {
                         if let Some(activity) = activity {
                             activity.earnings_per_share += amount / activity.total_supply;
                         }
@@ -264,7 +299,7 @@ pub mod pallet {
 
             // Others
             let reward_activity =
-                <StakingActivity<T>>::get(asset_id).ok_or(Error::<T>::ActivityNotExists)?;
+                <StakingActivityStore<T>>::get(asset_id).ok_or(Error::<T>::ActivityNotExists)?;
 
             let cur_block = <frame_system::Pallet<T>>::block_number();
             ensure!(
@@ -274,11 +309,11 @@ pub mod pallet {
             ensure!(amount > Zero::zero(), Error::<T>::InvalidAmount);
 
             if reward_activity.earnings_per_share == Zero::zero() {
-                <UserStakingRewards<T>>::mutate(asset_id, &account, |rewards| {
+                <UserStakingRewardStore<T>>::mutate(asset_id, &account, |rewards| {
                     rewards.set_zero();
                 });
             } else {
-                <UserStakingRewards<T>>::mutate(asset_id, &account, |rewards| {
+                <UserStakingRewardStore<T>>::mutate(asset_id, &account, |rewards| {
                     rewards.saturating_accrue(reward_activity.earnings_per_share * amount)
                 });
             }
@@ -314,11 +349,11 @@ pub mod pallet {
             //
 
             let activity =
-                <StakingActivity<T>>::get(asset_id).ok_or(Error::<T>::ActivityNotExists)?;
+                <StakingActivityStore<T>>::get(asset_id).ok_or(Error::<T>::ActivityNotExists)?;
 
             Self::get_reward(&activity, &account)?;
 
-            <UserStakingRewards<T>>::mutate(asset_id, &account, |user_staking_reward| {
+            <UserStakingRewardStore<T>>::mutate(asset_id, &account, |user_staking_reward| {
                 user_staking_reward.saturating_accrue(activity.earnings_per_share * amount)
             });
 
@@ -332,7 +367,7 @@ pub mod pallet {
            }
         */
         pub fn exit(asset_id: AssetIdOf<T>, account: &AccountOf<T>) -> Result<(), DispatchError> {
-            let amount = <UserStakingBalances<T>>::get(asset_id, account);
+            let amount = <UserStakingBalanceStore<T>>::get(asset_id, account);
             Self::withdraw(asset_id, account, amount)?;
             Ok(())
         }
@@ -357,7 +392,7 @@ pub mod pallet {
             //Others
             let reward = Self::earned(&activity, account);
             if reward > Zero::zero() {
-                <UserStakingRewards<T>>::insert(
+                <UserStakingRewardStore<T>>::insert(
                     activity.asset_id,
                     account,
                     activity.earnings_per_share
@@ -384,7 +419,7 @@ pub mod pallet {
             let cal = activity.earnings_per_share
                 * Self::staking_balance_of_inner(activity.asset_id, account);
 
-            let cur_reward_of_user = <UserStakingRewards<T>>::get(activity.asset_id, account);
+            let cur_reward_of_user = <UserStakingRewardStore<T>>::get(activity.asset_id, account);
 
             if cal < cur_reward_of_user {
                 return Zero::zero();
@@ -401,25 +436,25 @@ pub mod pallet {
         }
         */
         fn stake_inner(asset_id: AssetIdOf<T>, account: &AccountOf<T>, amount: BalanceOf<T>) {
-            <StakingActivity<T>>::mutate(asset_id, |activity| {
+            <StakingActivityStore<T>>::mutate(asset_id, |activity| {
                 if let Some(activity) = activity {
                     activity.total_supply.saturating_accrue(amount)
                 }
             });
 
-            <UserStakingBalances<T>>::mutate(asset_id, account, |user_balance| {
+            <UserStakingBalanceStore<T>>::mutate(asset_id, account, |user_balance| {
                 user_balance.saturating_accrue(amount)
             })
         }
 
         fn withdraw_inner(asset_id: AssetIdOf<T>, account: &AccountOf<T>, amount: BalanceOf<T>) {
-            <StakingActivity<T>>::mutate(asset_id, |activity| {
+            <StakingActivityStore<T>>::mutate(asset_id, |activity| {
                 if let Some(activity) = activity {
                     activity.total_supply.saturating_sub(amount);
                 }
             });
 
-            <UserStakingBalances<T>>::mutate(asset_id, account, |user_balance| {
+            <UserStakingBalanceStore<T>>::mutate(asset_id, account, |user_balance| {
                 user_balance.saturating_sub(amount)
             });
         }
@@ -428,7 +463,7 @@ pub mod pallet {
             asset_id: AssetIdOf<T>,
             account: &AccountOf<T>,
         ) -> BalanceOf<T> {
-            <UserStakingBalances<T>>::get(asset_id, account)
+            <UserStakingBalanceStore<T>>::get(asset_id, account)
         }
 
         fn transfer_to(
