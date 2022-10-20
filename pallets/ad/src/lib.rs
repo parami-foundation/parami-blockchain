@@ -796,28 +796,12 @@ impl<T: Config> Pallet<T> {
         ensure!(slot.ad_id == *ad_id, Error::<T>::Underbid);
 
         // 2. scoring visitor
-        let free_balance = Self::slot_current_fraction_balance(&slot);
         let RewardInfo {
-            total: amount,
+            total: _amount,
             for_visitor: reward,
             for_referrer: award,
-        } = Self::calculate_reward_inner(&ad_id, &visitor, referrer, ad_meta, free_balance);
-
-        ensure!(free_balance >= amount, Error::<T>::InsufficientFractions);
-
-        let fungibles: BalanceOf<T> = if let Some(fungible_id) = slot.fungible_id {
-            let amount: U512 = Self::try_into(amount.clone())?;
-            let free_balance: U512 = Self::try_into(free_balance)?;
-            let fungibles_balance: U512 =
-                Self::try_into(T::Assets::balance(fungible_id, &slot.budget_pot))?;
-
-            let fungibles = fungibles_balance * amount / free_balance;
-            let fungibles: u128 = fungibles.try_into()?;
-
-            BalanceOf::<T>::try_from(fungibles).map_err(|_e| Error::<T>::Overflow)?
-        } else {
-            Zero::zero()
-        };
+            fungibles,
+        } = Self::calculate_reward_inner(&ad_id, &visitor, referrer, &ad_meta, &slot)?;
 
         // 3. influence visitor
         for (tag, score) in scores {
@@ -876,9 +860,9 @@ impl<T: Config> Pallet<T> {
         ad_id: &HashOf<T>,
         visitor: &DidOf<T>,
         referrer: &Option<DidOf<T>>,
-        ad_meta: MetaOf<T>,
-        free_balance: BalanceOf<T>,
-    ) -> RewardInfo<BalanceOf<T>> {
+        ad_meta: &MetaOf<T>,
+        slot: &SlotMetaOf<T>,
+    ) -> Result<RewardInfo<BalanceOf<T>>, DispatchError> {
         let mut scoring = 5i32;
 
         let tags = T::Tags::tags_of(&ad_id);
@@ -909,7 +893,9 @@ impl<T: Config> Pallet<T> {
             amount = ad_meta.payout_max;
         }
 
-        let amount = amount.min(free_balance);
+        let fraction_free_balance = Self::slot_current_fraction_balance(&slot);
+
+        let amount = amount.min(fraction_free_balance);
 
         let award = if let Some(_referrer) = referrer {
             let rate = ad_meta.reward_rate.into();
@@ -919,12 +905,27 @@ impl<T: Config> Pallet<T> {
             Zero::zero()
         };
 
+        let fungibles: BalanceOf<T> = if let Some(fungible_id) = slot.fungible_id {
+            let amount: U512 = Self::try_into(amount.clone())?;
+            let free_balance: U512 = Self::try_into(fraction_free_balance)?;
+            let fungibles_balance: U512 =
+                Self::try_into(T::Assets::balance(fungible_id, &slot.budget_pot))?;
+
+            let fungibles = fungibles_balance * amount / free_balance;
+            let fungibles: u128 = fungibles.try_into()?;
+
+            BalanceOf::<T>::try_from(fungibles).map_err(|_e| Error::<T>::Overflow)?
+        } else {
+            Zero::zero()
+        };
+
         let reward = amount.saturating_sub(award.clone());
-        RewardInfo {
+        Ok(RewardInfo {
             total: amount,
             for_visitor: reward,
             for_referrer: award,
-        }
+            fungibles,
+        })
     }
 
     pub fn cal_reward(
@@ -935,15 +936,8 @@ impl<T: Config> Pallet<T> {
     ) -> Result<BalanceOf<T>, DispatchError> {
         let ad_meta = <Metadata<T>>::get(&ad_id).ok_or(Error::<T>::NotExists)?;
         let slot = SlotOf::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
-        let free_balance = Self::slot_current_fraction_balance(&slot);
-        Ok(Self::calculate_reward_inner(
-            &ad_id,
-            &did,
-            &referrer,
-            ad_meta,
-            free_balance,
-        ))
-        .map(|three_balance| three_balance.for_visitor)
+        Self::calculate_reward_inner(&ad_id, &did, &referrer, &ad_meta, &slot)
+            .map(|three_balance| three_balance.for_visitor)
     }
 
     pub fn try_into<TI: TryInto<u128>, TF: TryFrom<u128>>(value: TI) -> Result<TF, DispatchError> {
