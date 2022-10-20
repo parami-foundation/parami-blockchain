@@ -40,6 +40,7 @@ use parami_primitives::NftId;
 use parami_traits::Tags;
 use sp_core::crypto::AccountId32;
 use sp_core::crypto::ByteArray;
+use sp_core::U512;
 use sp_io::hashing::keccak_256;
 use sp_runtime::{
     traits::{AccountIdConversion, Hash, Saturating, Verify, Zero},
@@ -222,6 +223,7 @@ pub mod pallet {
         SlotNotExists,
         FungibleNotForSlot,
         InvalidSignature,
+        Overflow,
     }
 
     #[pallet::call]
@@ -794,26 +796,25 @@ impl<T: Config> Pallet<T> {
         ensure!(slot.ad_id == *ad_id, Error::<T>::Underbid);
 
         // 2. scoring visitor
-
+        let free_balance = Self::slot_current_fraction_balance(&slot);
         let RewardInfo {
             total: amount,
             for_visitor: reward,
             for_referrer: award,
-        } = Self::calculate_reward_inner(&ad_id, &visitor, referrer, ad_meta);
+        } = Self::calculate_reward_inner(&ad_id, &visitor, referrer, ad_meta, free_balance);
 
-        ensure!(
-            Self::slot_current_fraction_balance(&slot) >= amount,
-            Error::<T>::InsufficientFractions
-        );
+        ensure!(free_balance >= amount, Error::<T>::InsufficientFractions);
 
-        let fungibles = if let Some(fungible_id) = slot.fungible_id {
-            let fungibles = amount.clone();
-            let fungibles_balance = T::Assets::balance(fungible_id, &slot.budget_pot);
-            ensure!(
-                fungibles_balance >= fungibles,
-                Error::<T>::InsufficientFungibles
-            );
-            fungibles
+        let fungibles: BalanceOf<T> = if let Some(fungible_id) = slot.fungible_id {
+            let amount: U512 = Self::try_into(amount.clone())?;
+            let free_balance: U512 = Self::try_into(free_balance)?;
+            let fungibles_balance: U512 =
+                Self::try_into(T::Assets::balance(fungible_id, &slot.budget_pot))?;
+
+            let fungibles = fungibles_balance * amount / free_balance;
+            let fungibles: u128 = fungibles.try_into()?;
+
+            BalanceOf::<T>::try_from(fungibles).map_err(|_e| Error::<T>::Overflow)?
         } else {
             Zero::zero()
         };
@@ -876,6 +877,7 @@ impl<T: Config> Pallet<T> {
         visitor: &DidOf<T>,
         referrer: &Option<DidOf<T>>,
         ad_meta: MetaOf<T>,
+        free_balance: BalanceOf<T>,
     ) -> RewardInfo<BalanceOf<T>> {
         let mut scoring = 5i32;
 
@@ -907,6 +909,8 @@ impl<T: Config> Pallet<T> {
             amount = ad_meta.payout_max;
         }
 
+        let amount = amount.min(free_balance);
+
         let award = if let Some(_referrer) = referrer {
             let rate = ad_meta.reward_rate.into();
             let award = amount.saturating_mul(rate) / 100u32.into();
@@ -925,14 +929,26 @@ impl<T: Config> Pallet<T> {
 
     pub fn cal_reward(
         ad_id: HashOf<T>,
-        _nft_id: NftId,
+        nft_id: NftOf<T>,
         did: DidOf<T>,
         referrer: Option<DidOf<T>>,
     ) -> Result<BalanceOf<T>, DispatchError> {
         let ad_meta = <Metadata<T>>::get(&ad_id).ok_or(Error::<T>::NotExists)?;
+        let slot = SlotOf::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
+        let free_balance = Self::slot_current_fraction_balance(&slot);
         Ok(Self::calculate_reward_inner(
-            &ad_id, &did, &referrer, ad_meta,
+            &ad_id,
+            &did,
+            &referrer,
+            ad_meta,
+            free_balance,
         ))
         .map(|three_balance| three_balance.for_visitor)
+    }
+
+    pub fn try_into<TI: TryInto<u128>, TF: TryFrom<u128>>(value: TI) -> Result<TF, DispatchError> {
+        let val: u128 = TryInto::try_into(value).map_err(|e| Error::<T>::Overflow)?;
+        let ret_val: TF = TryFrom::try_from(val).map_err(|e| Error::<T>::Overflow)?;
+        return Ok(ret_val);
     }
 }
