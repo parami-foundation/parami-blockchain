@@ -1,7 +1,12 @@
+pub use pallet::*;
+
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
 mod tests;
+
+#[rustfmt::skip]
+pub mod weights;
 
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{
@@ -21,6 +26,7 @@ use sp_runtime::traits::{
 };
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
+use weights::WeightInfo;
 
 type AssetIdOf<T> = <T as pallet::Config>::AssetId;
 type AccountOf<T> = <T as frame_system::Config>::AccountId;
@@ -83,16 +89,20 @@ const DURATION_IN_BLOCK_NUM: u32 = 7 * 24 * 60 * 5;
  *
  * 带入该公式：1_000_000 = (x - x/2^157) / (1 - 1/2) -> x = 500_000 / (1 - 1/2^157) ~= 500_000
  */
-const ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT: u128 = (500_000u128 * 10 ^ 18) / 7;
+const ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT: u128 = (500_000u128 * 10u128.pow(18)) / 7u128;
 
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
     use frame_support::{pallet_prelude::*, Twox64Concat};
+    use frame_system::pallet_prelude::*;
     use sp_runtime::DispatchError;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
+        /// The overarching event type
+        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+
         /// The currency trait
         type Currency: Currency<AccountOf<Self>>;
 
@@ -114,6 +124,9 @@ pub mod pallet {
         /// The pallet id, used for deriving "pot" accounts of staking activity's reward
         #[pallet::constant]
         type PalletId: Get<PalletId>;
+
+        /// Weight information for extrinsics in this pallet.
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -153,6 +166,10 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    #[pallet::event]
+    #[pallet::generate_deposit(pub fn deposit_event)]
+    pub enum Event<T> {}
+
     #[pallet::error]
     pub enum Error<T> {
         ActivityNotExists,
@@ -188,8 +205,15 @@ pub mod pallet {
 
             let cur_blocknum = <frame_system::Pallet<T>>::block_number();
             let duration = HeightOf::<T>::from(DURATION_IN_BLOCK_NUM);
-            let daily_output = BalanceOf::<T>::try_from(ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT)
+
+            let normalized_daily_output =
+                BalanceOf::<T>::try_from(ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT)
+                    .map_err(|_| Error::<T>::TypeCastError)?;
+            let one_million_in_balance = BalanceOf::<T>::try_from(1_000_000u128 * 10u128.pow(18))
                 .map_err(|_| Error::<T>::TypeCastError)?;
+
+            let daily_output = normalized_daily_output.saturating_mul(reward_total_amount)
+                / one_million_in_balance;
 
             <StakingActivityStore<T>>::insert(
                 asset_id,
@@ -199,7 +223,7 @@ pub mod pallet {
                     reward_pot: Self::to_staking_reward_pot(&asset_id),
                     start_block_num: cur_blocknum,
                     halve_time: cur_blocknum.saturating_add(duration),
-                    lastblock: HeightOf::<T>::zero(),
+                    lastblock: cur_blocknum,
                     total_supply: BalanceOf::<T>::zero(),
                     earnings_per_share: BalanceOf::<T>::zero(),
                     daily_output,
