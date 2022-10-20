@@ -38,6 +38,7 @@ type BalanceOf<T> = <<T as pallet::Config>::Currency as Currency<AccountOf<T>>>:
 pub struct StakingActivity<A, AC, H, B> {
     pub asset_id: A,
     pub reward_total_amount: B,
+    pub reward_total_remains: B,
     pub reward_pot: AC,
     pub start_block_num: H,
     pub halve_time: H,
@@ -212,14 +213,16 @@ pub mod pallet {
             let one_million_in_balance = BalanceOf::<T>::try_from(1_000_000u128 * 10u128.pow(18))
                 .map_err(|_| Error::<T>::TypeCastError)?;
 
-            let daily_output = normalized_daily_output.saturating_mul(reward_total_amount)
-                / one_million_in_balance;
+            //TODO(ironman_ch): find a more robust way to calculate balance multiplication
+            let daily_output = normalized_daily_output
+                .saturating_mul(reward_total_amount / one_million_in_balance);
 
             <StakingActivityStore<T>>::insert(
                 asset_id,
                 StakingActivity {
                     asset_id,
                     reward_total_amount,
+                    reward_total_remains: reward_total_amount,
                     reward_pot: Self::to_staking_reward_pot(&asset_id),
                     start_block_num: cur_blocknum,
                     halve_time: cur_blocknum.saturating_add(duration),
@@ -311,9 +314,17 @@ pub mod pallet {
             let activity =
                 <StakingActivityStore<T>>::get(asset_id).ok_or(Error::<T>::ActivityNotExists)?;
             let amount = Self::get_profit(&activity)?;
+            // take the min of diff_profit and reward_total_remains
+            let amount = amount.min(activity.reward_total_remains);
+
             if amount > Zero::zero() {
                 let pot = Self::to_staking_reward_pot(&asset_id);
                 T::Assets::mint_into(asset_id, &pot, amount)?;
+                <StakingActivityStore<T>>::mutate(asset_id, |activity| {
+                    if let Some(activity) = activity {
+                        activity.reward_total_remains -= amount;
+                    }
+                });
 
                 if activity.total_supply == Zero::zero() {
                     <StakingActivityStore<T>>::mutate(asset_id, |activity| {
