@@ -71,7 +71,7 @@ const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::pallet_prelude::*;
+    use frame_support::{pallet_prelude::*, traits::ExistenceRequirement};
     use frame_system::pallet_prelude::*;
 
     #[pallet::config]
@@ -412,7 +412,7 @@ pub mod pallet {
 
             ensure!(!meta.minted, Error::<T>::Minted);
 
-            let deposit = Deposit::<T>::get(nft).unwrap_or(0u32.into());
+            let deposit = T::Currency::free_balance(&meta.pot);
 
             if deposit >= expected_balance {
                 return Ok(());
@@ -621,7 +621,13 @@ pub mod pallet {
             ensure!(id.is_some(), Error::<T>::NotExists);
             let id = id.unwrap();
 
+            ensure!(
+                <Metadata<T>>::get(id).filter(|m| !m.minted).is_some(),
+                Error::<T>::Minted
+            );
+
             let pot = T::PalletId::get().into_sub_account_truncating(&did);
+            let free_balance = T::Currency::free_balance(&pot);
 
             <Metadata<T>>::insert(
                 id,
@@ -638,8 +644,12 @@ pub mod pallet {
                 <Preferred<T>>::insert(&did, id);
             }
 
-            <Ported<T>>::insert((network, namespace.clone(), token.clone()), id);
+            if free_balance == 0u32.into() {
+                <Deposit<T>>::remove(id);
+                <Deposits<T>>::remove_prefix(id, None);
+            }
 
+            <Ported<T>>::insert((network, namespace.clone(), token.clone()), id);
             <External<T>>::insert(
                 id,
                 types::External {
