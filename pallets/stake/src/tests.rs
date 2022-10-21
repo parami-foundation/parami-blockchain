@@ -4,6 +4,7 @@ use frame_support::{
     traits::{tokens::fungibles::Mutate as FungMutate, Currency},
 };
 
+/*Profit Invariants Start */
 #[test]
 pub fn get_profit_will_never_exceed_total_reward_amount_in_138240_block_gap() {
     get_profit_will_never_exceed_total_reward_amount(138240);
@@ -103,8 +104,127 @@ pub fn get_profit_will_never_exceed_total_reward_amount(block_gap_of_get_reward:
     });
 }
 
+/*Profit Invariants End */
+
+/* For Invariants Start */
 #[test]
-pub fn invariant_holds_after_multi_stake_and_multi_withdraw() {}
+pub fn invariant_holds_after_multi_stake_and_multi_withdraw() {
+    new_test_ext().execute_with(|| {
+        let asset_id = 9;
+
+        let reward_total_amount = 7_000_000u128 * 10u128.pow(18);
+
+        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+
+        assert_ok!(Stake::start(asset_id, reward_total_amount));
+
+        let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+
+        assert_ok!(Stake::stake(20, asset_id, &ALICE));
+
+        System::set_block_number(20);
+
+        assert_ok!(Stake::stake(20, asset_id, &ALICE));
+
+        System::set_block_number(40);
+
+        assert_ok!(Stake::stake(20, asset_id, &CHARLIE));
+
+        System::set_block_number(60);
+
+        assert_ok!(Stake::stake(20, asset_id, &CHARLIE));
+
+        let reward_pot_balance = Assets::balance(asset_id, activity.reward_pot);
+
+        let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+        let earned_total = Stake::earned(&activity, &ALICE) + Stake::earned(&activity, &CHARLIE);
+        assert_eq!(reward_pot_balance, earned_total,);
+    });
+}
+/* For Invariants End */
 
 #[test]
-pub fn no_two_assets_staking_activity_pot_will_conflict() {}
+pub fn no_two_assets_staking_activity_pot_will_conflict() {
+    use std::collections::HashSet;
+    let mut exists_pots = HashSet::new();
+
+    new_test_ext().execute_with(|| {
+        for asset_id in 1..400_000 {
+            assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+            assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
+
+            let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+            assert_eq!(exists_pots.contains(&activity.reward_pot), false);
+
+            exists_pots.insert(activity.reward_pot);
+        }
+    });
+}
+
+/*
+ * For Staking Activity Start
+ */
+#[test]
+pub fn total_supply_should_change_exactly_after_withdraw() {}
+
+#[test]
+pub fn total_supply_should_change_after_stake() {}
+
+#[test]
+pub fn total_supply_and_user_balance_should_change_exactly_after_stake() {}
+
+#[test]
+pub fn total_supply_and_user_balance_should_not_change_after_get_reward() {}
+
+#[test]
+pub fn earnings_per_share_should_change_exatly_after_make_profit() {}
+
+#[test]
+pub fn reward_total_remains_should_change_exactly_after_make_profit() {}
+
+#[test]
+pub fn halve_time_and_daily_output_should_change_after_hit_halve_time_in_make_profit() {}
+
+#[test]
+pub fn last_block_should_change_after_make_profit() {}
+
+/*
+ * For Staking Activity End
+ */
+
+/*
+For User State Start
+ */
+#[test]
+pub fn earned_and_user_balance_should_decrease_exactly_after_withdraw() {}
+
+#[test]
+pub fn earned_should_decrease_exactly_after_get_reward() {}
+
+#[test]
+pub fn earned_and_user_balance_should_increase_exactly_after_stake() {}
+
+#[test]
+pub fn earned_should_be_zero_when_stake_in_the_same_block_with_start() {
+    new_test_ext().execute_with(|| {
+        let asset_id = 9;
+
+        let reward_total_amount = 7_000_000u128 * 10u128.pow(18);
+
+        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+
+        assert_ok!(Stake::start(asset_id, reward_total_amount));
+
+        let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+
+        Stake::stake(20, asset_id, &ALICE);
+
+        let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+        let earned = Stake::earned(&activity, &ALICE);
+
+        assert_eq!(earned, 0);
+    });
+}
+/*
+For User State End
+*/

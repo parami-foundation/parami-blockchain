@@ -361,7 +361,7 @@ pub mod pallet {
         pub fn stake(
             amount: BalanceOf<T>,
             asset_id: AssetIdOf<T>,
-            account: AccountOf<T>,
+            account: &AccountOf<T>,
         ) -> Result<(), sp_runtime::DispatchError> {
             // 1. call make_profit first
             Self::make_profit(asset_id)?;
@@ -484,7 +484,7 @@ pub mod pallet {
                }
            }
         */
-        fn earned(activity: &StakingActivityOf<T>, account: &AccountOf<T>) -> BalanceOf<T> {
+        pub fn earned(activity: &StakingActivityOf<T>, account: &AccountOf<T>) -> BalanceOf<T> {
             let cal = activity.earnings_per_share
                 * Self::staking_balance_of_inner(activity.asset_id, account);
 
