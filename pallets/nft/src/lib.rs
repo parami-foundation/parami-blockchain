@@ -603,7 +603,7 @@ pub mod pallet {
         }
 
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
-        pub fn force_update_ported_nft(
+        pub fn force_update_empty_ported_nft(
             origin: OriginFor<T>,
             did: DidOf<T>,
             network: Network,
@@ -628,6 +628,7 @@ pub mod pallet {
 
             let pot = T::PalletId::get().into_sub_account_truncating(&did);
             let free_balance = T::Currency::free_balance(&pot);
+            ensure!(free_balance == 0, Error::<T>::InsufficientBalance);
 
             <Metadata<T>>::insert(
                 id,
@@ -644,10 +645,8 @@ pub mod pallet {
                 <Preferred<T>>::insert(&did, id);
             }
 
-            if free_balance == 0u32.into() {
-                <Deposit<T>>::remove(id);
-                <Deposits<T>>::remove_prefix(id, None);
-            }
+            <Deposit<T>>::remove(id);
+            <Deposits<T>>::remove_prefix(id, None);
 
             <Ported<T>>::insert((network, namespace.clone(), token.clone()), id);
             <External<T>>::insert(
