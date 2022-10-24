@@ -1,10 +1,6 @@
-use crate::{
-    mock::*, AccountOf, StakingActivityStore, UserStakingBalanceStore, DURATION_IN_BLOCK_NUM,
-};
-use frame_support::{
-    assert_noop, assert_ok,
-    traits::{tokens::fungibles::Mutate as FungMutate, Currency},
-};
+use crate::{mock::*, StakingActivityStore, UserStakingBalanceStore, DURATION_IN_BLOCK_NUM};
+use frame_support::assert_ok;
+use rand::prelude::*;
 use sp_runtime::traits::BlockNumberProvider;
 
 /*Profit Invariants Start */
@@ -66,42 +62,51 @@ pub fn get_profit_will_never_exceed_total_reward_amount_in_90_block_gap() {
 pub fn get_profit_will_never_exceed_total_reward_amount(block_gap_of_get_reward: u64) {
     //7884000 is block num in 3 years.
     let loop_count = 7884000 / block_gap_of_get_reward;
-    new_test_ext().execute_with(|| {
-        let asset_id = 9;
+    for reward_total_amount in vec![
+        71_000u128 * 10u128.pow(18),
+        711_000 * 10u128.pow(18),
+        7_120_000 * 10u128.pow(18),
+    ] {
+        new_test_ext().execute_with(|| {
+            let asset_id = 9;
 
-        let reward_total_amount = 7_000_000u128 * 10u128.pow(18);
+            // let mut rng = rand::thread_rng();
+            // let ran_val = rng.gen_range(100_000u128, 10_000_000u128);
 
-        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+            println!("reward_total_amount is {:}", reward_total_amount);
 
-        assert_ok!(Stake::start(asset_id, reward_total_amount));
+            assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
 
-        //7884000
-        for _ in 0..loop_count {
-            let cur_blocknum = <frame_system::Pallet<Test>>::block_number();
-            System::set_block_number(cur_blocknum + block_gap_of_get_reward);
-            assert_ok!(Stake::make_profit(asset_id));
-        }
+            assert_ok!(Stake::start(asset_id, reward_total_amount));
 
-        let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
-        let balance = Assets::balance(asset_id, activity.reward_pot);
-        assert!(
-            balance < reward_total_amount * 11 / 10,
-            "reward in pot {:} should be less than reward_total_amount {:}",
-            balance,
-            reward_total_amount
-        );
+            //7884000
+            for _ in 0..loop_count {
+                let cur_blocknum = <frame_system::Pallet<Test>>::block_number();
+                System::set_block_number(cur_blocknum + block_gap_of_get_reward);
+                assert_ok!(Stake::make_profit(asset_id));
+            }
 
-        assert!(
-            balance > reward_total_amount * 2 / 3,
-            "reward in pot {:} should be more than 2 / 3 of reward_total_amount {:} ",
-            balance,
-            reward_total_amount
-        );
-        print!(
-            "balance of pot is {:?}, reward_total_amount is {:?}",
-            balance, reward_total_amount
-        );
-    });
+            let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+            let balance = Assets::balance(asset_id, activity.reward_pot);
+            assert!(
+                balance < reward_total_amount * 11 / 10,
+                "reward in pot {:} should be less than reward_total_amount {:}",
+                balance,
+                reward_total_amount
+            );
+
+            assert!(
+                balance > reward_total_amount * 2 / 3,
+                "reward in pot {:} should be more than 2 / 3 of reward_total_amount {:} ",
+                balance,
+                reward_total_amount
+            );
+            println!(
+                "balance of pot is {:?}, reward_total_amount is {:?}",
+                balance, reward_total_amount
+            );
+        });
+    }
 }
 
 /*Profit Invariants End */
@@ -434,7 +439,7 @@ pub fn earned_should_increase_exactly_after_stake() {
 
         let earned_after = Stake::earned(asset_id, &ALICE).unwrap();
         assert!(earned_after > 0);
-        print!("earned after make profit is {:}", earned_after);
+        println!("earned after make profit is {:}", earned_after);
     });
 }
 

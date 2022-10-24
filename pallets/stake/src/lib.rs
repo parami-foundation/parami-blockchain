@@ -96,8 +96,9 @@ const ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT: u128 = (500_000u128 * 10u128.pow
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::{pallet_prelude::*, Twox64Concat};
+    use frame_support::{pallet_prelude::*, traits::tokens::Balance, Twox64Concat};
     use frame_system::pallet_prelude::*;
+    use sp_core::U512;
     use sp_runtime::DispatchError;
 
     #[pallet::config]
@@ -208,16 +209,21 @@ pub mod pallet {
             let cur_blocknum = <frame_system::Pallet<T>>::block_number();
             let duration = HeightOf::<T>::from(DURATION_IN_BLOCK_NUM);
 
-            let normalized_daily_output =
-                BalanceOf::<T>::try_from(ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT)
-                    .map_err(|_| Error::<T>::TypeCastError)?;
-            let one_million_in_balance = BalanceOf::<T>::try_from(1_000_000u128 * 10u128.pow(18))
+            let normalized_daily_output = U512::try_from(ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT)
                 .map_err(|_| Error::<T>::TypeCastError)?;
+            let one_million_in_balance = U512::try_from(1_000_000u128 * 10u128.pow(18))
+                .map_err(|_| Error::<T>::TypeCastError)?;
+            let reward_total_amount_u128: u128 = TryInto::<u128>::try_into(reward_total_amount)
+                .map_err(|_| Error::<T>::TypeCastError)?;
+            let reward_total_amount_u512: U512 =
+                U512::try_from(reward_total_amount_u128).map_err(|_| Error::<T>::TypeCastError)?;
 
-            //TODO(ironman_ch): find a more robust way to calculate balance multiplication
-            let daily_output = normalized_daily_output
-                .saturating_mul(reward_total_amount / one_million_in_balance);
-
+            let daily_output_u512: U512 =
+                normalized_daily_output * reward_total_amount_u512 / one_million_in_balance;
+            let daily_output_u128: u128 = TryInto::<u128>::try_into(daily_output_u512)
+                .map_err(|_| Error::<T>::TypeCastError)?;
+            let daily_output_balance = TryInto::<BalanceOf<T>>::try_into(daily_output_u128)
+                .map_err(|_| Error::<T>::TypeCastError)?;
             <StakingActivityStore<T>>::insert(
                 asset_id,
                 StakingActivity {
@@ -230,7 +236,7 @@ pub mod pallet {
                     lastblock: cur_blocknum,
                     total_supply: BalanceOf::<T>::zero(),
                     earnings_per_share: BalanceOf::<T>::zero(),
-                    daily_output,
+                    daily_output: daily_output_balance,
                 },
             );
             Ok(())
