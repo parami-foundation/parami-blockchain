@@ -1,8 +1,11 @@
-use crate::{mock::*, StakingActivityStore};
+use crate::{
+    mock::*, AccountOf, StakingActivityStore, UserStakingBalanceStore, DURATION_IN_BLOCK_NUM,
+};
 use frame_support::{
     assert_noop, assert_ok,
     traits::{tokens::fungibles::Mutate as FungMutate, Currency},
 };
+use sp_runtime::traits::BlockNumberProvider;
 
 /*Profit Invariants Start */
 #[test]
@@ -52,7 +55,6 @@ pub fn get_profit_will_never_exceed_total_reward_amount_in_540_block_gap() {
 
 #[test]
 pub fn get_profit_will_never_exceed_total_reward_amount_in_270_block_gap() {
-    let block_gap_of_get_reward = 270;
     get_profit_will_never_exceed_total_reward_amount(270);
 }
 
@@ -73,13 +75,11 @@ pub fn get_profit_will_never_exceed_total_reward_amount(block_gap_of_get_reward:
 
         assert_ok!(Stake::start(asset_id, reward_total_amount));
 
-        let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
-
         //7884000
         for _ in 0..loop_count {
             let cur_blocknum = <frame_system::Pallet<Test>>::block_number();
             System::set_block_number(cur_blocknum + block_gap_of_get_reward);
-            assert_ok!(Stake::get_reward(&activity, &BOB));
+            assert_ok!(Stake::make_profit(asset_id));
         }
 
         let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
@@ -136,8 +136,8 @@ pub fn invariant_holds_after_multi_stake_and_multi_withdraw() {
 
         let reward_pot_balance = Assets::balance(asset_id, activity.reward_pot);
 
-        let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
-        let earned_total = Stake::earned(&activity, &ALICE) + Stake::earned(&activity, &CHARLIE);
+        let earned_total =
+            Stake::earned(asset_id, &ALICE).unwrap() + Stake::earned(asset_id, &CHARLIE).unwrap();
         assert_eq!(reward_pot_balance, earned_total,);
     });
 }
@@ -165,44 +165,278 @@ pub fn no_two_assets_staking_activity_pot_will_conflict() {
  * For Staking Activity Start
  */
 #[test]
-pub fn total_supply_should_change_exactly_after_withdraw() {}
+pub fn total_supply_and_user_balance_should_change_exactly_after_withdraw() {
+    new_test_ext().execute_with(|| {
+        let asset_id = 1;
+        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+        assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
+
+        assert_ok!(Stake::stake(20, asset_id, &ALICE));
+
+        System::set_block_number(20);
+
+        let activity_before_withdraw = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+        let user_balance_before_withdraw = <UserStakingBalanceStore<Test>>::get(asset_id, &ALICE);
+        let withdraw_amount = 15u128;
+        assert_ok!(Stake::withdraw(asset_id, &ALICE, withdraw_amount));
+
+        let activity_after_withdraw = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+        let user_balance_after_withdraw = <UserStakingBalanceStore<Test>>::get(asset_id, &ALICE);
+
+        assert_eq!(
+            activity_before_withdraw.total_supply,
+            activity_after_withdraw.total_supply + withdraw_amount
+        );
+
+        assert_eq!(
+            user_balance_before_withdraw,
+            user_balance_after_withdraw + withdraw_amount
+        );
+    });
+}
 
 #[test]
-pub fn total_supply_should_change_after_stake() {}
+pub fn total_supply_and_user_balance_should_change_after_stake() {
+    new_test_ext().execute_with(|| {
+        let asset_id = 1;
+        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+        assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
+
+        let activity_before = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+        let user_balance_before = <UserStakingBalanceStore<Test>>::get(asset_id, &ALICE);
+
+        let stake_amount = 20;
+        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+
+        let activity_after = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+        let user_balance_after_stake = <UserStakingBalanceStore<Test>>::get(asset_id, &ALICE);
+
+        assert_eq!(
+            activity_before.total_supply + stake_amount,
+            activity_after.total_supply
+        );
+
+        assert_eq!(user_balance_before + stake_amount, user_balance_after_stake);
+    });
+}
 
 #[test]
-pub fn total_supply_and_user_balance_should_change_exactly_after_stake() {}
+pub fn total_supply_and_user_balance_should_not_change_after_get_reward() {
+    new_test_ext().execute_with(|| {
+        let asset_id = 1;
+        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+        assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
+        let stake_amount = 20;
+        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+
+        let activity_before_get_reward = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+        let user_balance_before_get_reward = <UserStakingBalanceStore<Test>>::get(asset_id, &ALICE);
+
+        assert_ok!(Stake::get_reward(asset_id, &ALICE));
+
+        let activity_after_get_reward = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+        let user_balance_after_get_reward = <UserStakingBalanceStore<Test>>::get(asset_id, &ALICE);
+
+        assert_eq!(
+            activity_before_get_reward.total_supply,
+            activity_after_get_reward.total_supply
+        );
+        assert_eq!(
+            user_balance_before_get_reward,
+            user_balance_after_get_reward
+        );
+    });
+}
 
 #[test]
-pub fn total_supply_and_user_balance_should_not_change_after_get_reward() {}
+pub fn earnings_per_share_and_total_remains_and_pot_balance_should_change_exatly_after_make_profit_when_make_profit(
+) {
+    new_test_ext().execute_with(|| {
+        let asset_id = 1;
+        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+        assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
+        let stake_amount = 20;
+        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+
+        let activity_before = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+        let reward_pot_balance_before = Assets::balance(asset_id, activity_before.reward_pot);
+
+        System::set_block_number(20);
+        assert_ok!(Stake::make_profit(asset_id));
+
+        let activity_after = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+        let reward_pot_balance_after = Assets::balance(asset_id, activity_after.reward_pot);
+
+        // TODO(ironman_ch): use blocks_in_day of parami_primitive
+        let cur_profit = 20 * activity_before.daily_output / (24 * 60 * 5);
+        assert_eq!(
+            activity_before.earnings_per_share + cur_profit / activity_before.total_supply,
+            activity_after.earnings_per_share
+        );
+        assert_eq_escape_precision_effect(
+            activity_before.reward_total_remains,
+            activity_after.reward_total_remains + cur_profit,
+        );
+        assert_eq_escape_precision_effect(
+            reward_pot_balance_before + cur_profit,
+            reward_pot_balance_after,
+        );
+        assert_eq!(
+            reward_pot_balance_after - reward_pot_balance_before,
+            activity_before.reward_total_remains - activity_after.reward_total_remains
+        );
+    });
+}
+
+fn assert_eq_escape_precision_effect(left: u128, right: u128) {
+    assert_eq!(left / 10u128.pow(2), right / 10u128.pow(2));
+}
 
 #[test]
-pub fn earnings_per_share_should_change_exatly_after_make_profit() {}
+pub fn halve_time_and_daily_output_should_change_after_hit_halve_time_in_make_profit() {
+    new_test_ext().execute_with(|| {
+        let asset_id = 1;
+        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+        assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
+        let stake_amount = 100;
+        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        System::set_block_number(Into::<u64>::into(DURATION_IN_BLOCK_NUM) + 2u64);
+
+        let activity_before = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+
+        assert_ok!(Stake::make_profit(asset_id));
+
+        let activity_after = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+
+        assert_eq!(
+            activity_after.halve_time,
+            System::current_block_number() + Into::<u64>::into(DURATION_IN_BLOCK_NUM)
+        );
+        assert_eq!(
+            activity_before.daily_output,
+            activity_after.daily_output * 2
+        )
+    });
+}
 
 #[test]
-pub fn reward_total_remains_should_change_exactly_after_make_profit() {}
+pub fn last_block_should_change_after_make_profit() {
+    new_test_ext().execute_with(|| {
+        let asset_id = 1;
+        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+        assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
 
-#[test]
-pub fn halve_time_and_daily_output_should_change_after_hit_halve_time_in_make_profit() {}
+        let stake_amount = 100;
+        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        let block_num = 20;
+        System::set_block_number(block_num);
 
-#[test]
-pub fn last_block_should_change_after_make_profit() {}
+        assert_ok!(Stake::make_profit(asset_id));
+
+        let activity_after = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+
+        assert_eq!(activity_after.lastblock, block_num);
+    });
+}
 
 /*
  * For Staking Activity End
  */
 
 /*
+Guard stake, get_reward, withdraw call make_profit start
+ */
+
+#[test]
+pub fn stake_must_call_make_profit() {}
+
+#[test]
+pub fn get_reward_must_call_make_profit() {}
+
+#[test]
+pub fn withdraw_must_call_make_profit() {}
+
+/*
+Guard stake, get_reward, withdraw call make_profit end
+ */
+
+/*
 For User State Start
  */
 #[test]
-pub fn earned_and_user_balance_should_decrease_exactly_after_withdraw() {}
+pub fn earned_should_decrease_to_zero_after_withdraw() {
+    new_test_ext().execute_with(|| {
+        let asset_id = 9;
+
+        let reward_total_amount = 7_000_000u128 * 10u128.pow(18);
+
+        let stake_amount = 20;
+        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+        assert_ok!(Stake::start(asset_id, reward_total_amount));
+        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        let cur_block_num = 20;
+        System::set_block_number(cur_block_num);
+
+        assert_ok!(Stake::make_profit(asset_id));
+
+        let earned_before = Stake::earned(asset_id, &ALICE).unwrap();
+
+        let withdraw_amount = 10;
+        assert_ok!(Stake::withdraw(asset_id, &ALICE, withdraw_amount));
+        let earned_after = Stake::earned(asset_id, &ALICE).unwrap();
+
+        assert!(earned_before > 0, "earned_before should be G.T. zero");
+        assert_eq!(earned_after, 0);
+    });
+}
 
 #[test]
-pub fn earned_should_decrease_exactly_after_get_reward() {}
+pub fn earned_should_decrease_to_zero_after_get_reward() {
+    new_test_ext().execute_with(|| {
+        let asset_id = 9;
+
+        let reward_total_amount = 7_000_000u128 * 10u128.pow(18);
+
+        let stake_amount = 20;
+        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+        assert_ok!(Stake::start(asset_id, reward_total_amount));
+        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        let cur_block_num = 20;
+        System::set_block_number(cur_block_num);
+
+        assert_ok!(Stake::make_profit(asset_id));
+
+        let earned_before = Stake::earned(asset_id, &ALICE).unwrap();
+
+        assert_ok!(Stake::get_reward(asset_id, &ALICE));
+        let earned_after = Stake::earned(asset_id, &ALICE).unwrap();
+
+        assert!(earned_before > 0, "earned_before should be G.T. zero");
+        assert_eq!(earned_after, 0);
+    });
+}
 
 #[test]
-pub fn earned_and_user_balance_should_increase_exactly_after_stake() {}
+pub fn earned_should_increase_exactly_after_stake() {
+    new_test_ext().execute_with(|| {
+        let asset_id = 9;
+
+        let reward_total_amount = 7_000_000u128 * 10u128.pow(18);
+
+        let stake_amount = 20;
+        assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+        assert_ok!(Stake::start(asset_id, reward_total_amount));
+        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        let cur_block_num = 20;
+        System::set_block_number(cur_block_num);
+
+        Stake::make_profit(asset_id).unwrap();
+
+        let earned_after = Stake::earned(asset_id, &ALICE).unwrap();
+        assert!(earned_after > 0);
+        print!("earned after make profit is {:}", earned_after);
+    });
+}
 
 #[test]
 pub fn earned_should_be_zero_when_stake_in_the_same_block_with_start() {
@@ -215,12 +449,9 @@ pub fn earned_should_be_zero_when_stake_in_the_same_block_with_start() {
 
         assert_ok!(Stake::start(asset_id, reward_total_amount));
 
-        let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+        assert_ok!(Stake::stake(20, asset_id, &ALICE));
 
-        Stake::stake(20, asset_id, &ALICE);
-
-        let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
-        let earned = Stake::earned(&activity, &ALICE);
+        let earned = Stake::earned(asset_id, &ALICE).unwrap();
 
         assert_eq!(earned, 0);
     });
