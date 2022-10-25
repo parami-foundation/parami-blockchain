@@ -165,17 +165,7 @@ pub mod pallet {
             let (did, who) = T::CallOrigin::ensure_origin(origin)?;
 
             ensure!(!Self::exists(&tag), Error::<T>::Exists);
-
-            let fee = T::SubmissionFee::get();
-
-            let imb = T::Currency::burn(fee);
-
-            let res = T::Currency::settle(&who, imb, WithdrawReasons::FEE, KeepAlive);
-
-            ensure!(res.is_ok(), Error::<T>::InsufficientBalance);
-
             let hash = Self::create_with_cur_block_num(did, tag);
-
             Self::deposit_event(Event::Created(hash, did));
 
             Ok(())
