@@ -100,7 +100,7 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    (parami_tag::migrations::v6::FixWrongStructure<Runtime>,),
+    (parami_swap::migrations::v3::RemoveAllLiquidityExceptInitialLiquidity<Runtime>),
 >;
 
 /// Era type as expected by this runtime.
@@ -881,6 +881,7 @@ impl parami_swap::Config for Runtime {
     type FarmingCurve = LinearFarmingCurve<Runtime, InitialFarmingReward, InitialMintingValueBase>;
     type PalletId = SwapPalletId;
     type WeightInfo = parami_swap::weights::SubstrateWeight<Runtime>;
+    type Nfts = Nft;
 }
 
 parameter_types! {
