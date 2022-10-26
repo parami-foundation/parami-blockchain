@@ -1,6 +1,5 @@
 use crate::{mock::*, StakingActivityStore, UserStakingBalanceStore, DURATION_IN_BLOCK_NUM};
 use frame_support::assert_ok;
-use rand::prelude::*;
 use sp_runtime::traits::BlockNumberProvider;
 
 /*Profit Invariants Start */

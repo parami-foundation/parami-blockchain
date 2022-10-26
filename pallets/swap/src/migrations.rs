@@ -148,7 +148,7 @@ pub mod v3 {
                 let liquidity = <Liquidity<T>>::get(lp_token_id).unwrap();
 
                 let asset_id = liquidity.token_id;
-                let liquidity_owner = liquidity.owner;
+                let liquidity_owner = liquidity.owner.clone();
 
                 let initial_liquidity_provider =
                     Self::initial_liquidity_provider(asset_id).unwrap();
@@ -168,6 +168,7 @@ pub mod v3 {
                     .unwrap();
 
                     lp_token_burned += 1;
+                    info!("remove liquidity {:?}", liquidity);
                 }
             }
 
@@ -206,7 +207,7 @@ pub mod v3 {
             Ok(())
         }
 
-        // #[cfg(feature = "try-runtime")]
+        #[cfg(feature = "try-runtime")]
         fn post_upgrade() -> Result<(), &'static str> {
             let mut remain_liquidity_count = 0;
             for (_lp_token_id, liquidity) in <Liquidity<T>>::iter() {

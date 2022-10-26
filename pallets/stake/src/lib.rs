@@ -1,14 +1,17 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 pub use pallet::*;
+
+#[rustfmt::skip]
+pub mod weights;
 
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
 mod tests;
 
-#[rustfmt::skip]
-pub mod weights;
+mod types;
 
-use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{
     traits::{
         tokens::fungibles::{
@@ -18,13 +21,10 @@ use frame_support::{
     },
     PalletId,
 };
-use scale_info::TypeInfo;
-#[cfg(feature = "std")]
-use serde::{Deserialize, Serialize};
+use sp_core::U512;
 use sp_runtime::traits::{
     AccountIdConversion, AtLeast32BitUnsigned, Bounded, Hash, Saturating, Zero,
 };
-use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
 use weights::WeightInfo;
 
@@ -32,28 +32,8 @@ type AssetIdOf<T> = <T as pallet::Config>::AssetId;
 type AccountOf<T> = <T as frame_system::Config>::AccountId;
 type HeightOf<T> = <T as frame_system::Config>::BlockNumber;
 type BalanceOf<T> = <<T as pallet::Config>::Currency as Currency<AccountOf<T>>>::Balance;
-
-#[derive(Clone, Decode, Default, Encode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct StakingActivity<A, AC, H, B> {
-    pub asset_id: A,
-    pub reward_total_amount: B,
-    pub reward_total_remains: B,
-    pub reward_pot: AC,
-    pub start_block_num: H,
-    pub halve_time: H,
-    pub lastblock: H,
-    pub total_supply: B,
-    pub earnings_per_share: B,
-    pub daily_output: B,
-}
-
-type StakingActivityOf<T> = StakingActivity<AssetIdOf<T>, AccountOf<T>, HeightOf<T>, BalanceOf<T>>;
-
-//7 days
-//TODO(ironman_ch): use const in parami_primitive
-const DURATION_IN_BLOCK_NUM: u32 = 7 * 24 * 60 * 5;
-
+type StakingActivityOf<T> =
+    types::StakingActivity<AssetIdOf<T>, AccountOf<T>, HeightOf<T>, BalanceOf<T>>;
 /**
  * This const is the normalized INIT_DAILY_OUTPUT, and the normalized total amount is 1_000_000.
  *
@@ -91,15 +71,11 @@ const DURATION_IN_BLOCK_NUM: u32 = 7 * 24 * 60 * 5;
  *
  * 带入该公式：1_000_000 = (x - x/2^157) / (1 - 1/2) -> x = 500_000 / (1 - 1/2^157) ~= 500_000
  */
-const ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT: u128 = (500_000u128 * 10u128.pow(18)) / 7u128;
-
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::{pallet_prelude::*, traits::tokens::Balance, Twox64Concat};
+    use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
-    use sp_core::U512;
-    use sp_runtime::DispatchError;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -127,6 +103,12 @@ pub mod pallet {
         /// The pallet id, used for deriving "pot" accounts of staking activity's reward
         #[pallet::constant]
         type PalletId: Get<PalletId>;
+
+        #[pallet::constant]
+        type OneMillionNormalizedInitDailyOutput: Get<BalanceOf<Self>>;
+
+        #[pallet::constant]
+        type DurationInBlockNum: Get<Self::BlockNumber>;
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
@@ -207,9 +189,13 @@ pub mod pallet {
             ensure!(!already_exists, Error::<T>::ActivityAlreadyExists);
 
             let cur_blocknum = <frame_system::Pallet<T>>::block_number();
-            let duration = HeightOf::<T>::from(DURATION_IN_BLOCK_NUM);
+            let duration = T::DurationInBlockNum::get();
 
-            let normalized_daily_output = U512::try_from(ONE_MILLION_NORMALIZED_INIT_DAILY_OUTPUT)
+            let normalized_daily_output_u128: u128 = T::OneMillionNormalizedInitDailyOutput::get()
+                .try_into()
+                .map_err(|_| Error::<T>::TypeCastError)?;
+
+            let normalized_daily_output = U512::try_from(normalized_daily_output_u128)
                 .map_err(|_| Error::<T>::TypeCastError)?;
             let one_million_in_balance = U512::try_from(1_000_000u128 * 10u128.pow(18))
                 .map_err(|_| Error::<T>::TypeCastError)?;
@@ -226,7 +212,7 @@ pub mod pallet {
                 .map_err(|_| Error::<T>::TypeCastError)?;
             <StakingActivityStore<T>>::insert(
                 asset_id,
-                StakingActivity {
+                types::StakingActivity {
                     asset_id,
                     reward_total_amount,
                     reward_total_remains: reward_total_amount,
@@ -277,7 +263,7 @@ pub mod pallet {
                 <StakingActivityStore<T>>::mutate(activity.asset_id, |activity| {
                     if let Some(activity) = activity {
                         activity.daily_output = activity.daily_output / 2u32.into();
-                        activity.halve_time = cur_block_num + DURATION_IN_BLOCK_NUM.into();
+                        activity.halve_time = cur_block_num + T::DurationInBlockNum::get();
                     }
                 });
             }

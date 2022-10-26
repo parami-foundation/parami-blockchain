@@ -6209,6 +6209,7 @@ dependencies = [
  "parami-nft-rpc-runtime-api",
  "parami-ocw",
  "parami-primitives",
+ "parami-stake",
  "parami-swap",
  "parami-swap-rpc-runtime-api",
  "parami-tag",
@@ -6552,6 +6553,7 @@ dependencies = [
  "parami-nft-rpc-runtime-api",
  "parami-ocw",
  "parami-primitives",
+ "parami-stake",
  "parami-swap",
  "parami-swap-rpc-runtime-api",
  "parami-tag",
@@ -6614,7 +6616,6 @@ dependencies = [
  "scale-info",
  "serde",
  "sp-core",
- "sp-io",
  "sp-runtime",
  "sp-std",
 ]
