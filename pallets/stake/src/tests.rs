@@ -1,4 +1,4 @@
-use crate::{mock::*, StakingActivityStore, UserStakingBalanceStore, DURATION_IN_BLOCK_NUM};
+use crate::{mock::*, Config, StakingActivityStore, UserStakingBalanceStore};
 use frame_support::assert_ok;
 use sp_runtime::traits::BlockNumberProvider;
 
@@ -304,7 +304,9 @@ pub fn halve_time_and_daily_output_should_change_after_hit_halve_time_in_make_pr
         assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
         let stake_amount = 100;
         assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
-        System::set_block_number(Into::<u64>::into(DURATION_IN_BLOCK_NUM) + 2u64);
+        System::set_block_number(
+            Into::<u64>::into(<Test as Config>::DurationInBlockNum::get()) + 2u64,
+        );
 
         let activity_before = <StakingActivityStore<Test>>::get(asset_id).unwrap();
 
@@ -314,7 +316,8 @@ pub fn halve_time_and_daily_output_should_change_after_hit_halve_time_in_make_pr
 
         assert_eq!(
             activity_after.halve_time,
-            System::current_block_number() + Into::<u64>::into(DURATION_IN_BLOCK_NUM)
+            System::current_block_number()
+                + Into::<u64>::into(<Test as Config>::DurationInBlockNum::get())
         );
         assert_eq!(
             activity_before.daily_output,

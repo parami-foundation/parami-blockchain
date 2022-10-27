@@ -2,6 +2,7 @@ use crate as parami_stake;
 use frame_support::traits::{ConstU128, ConstU32};
 use frame_support::{parameter_types, traits::GenesisBuild, PalletId};
 use frame_system::{self as system, EnsureRoot};
+
 use sp_core::{sr25519, H256};
 use sp_runtime::{
     testing::Header,
@@ -115,6 +116,8 @@ impl pallet_balances::Config for Test {
 
 parameter_types! {
     pub const StakePalletId: PalletId = PalletId(*b"prm/stak");
+    pub const OneMillionNormalizedInitDailyOutputConst: Balance = (500_000u128 * 10u128.pow(18)) / 7u128;
+    pub const SevenDaysInBlockNum: BlockNumber = 7 * 24 * 60 * 5; //7 days
 }
 
 impl parami_stake::Config for Test {
@@ -123,6 +126,8 @@ impl parami_stake::Config for Test {
     type Assets = Assets;
     type Currency = Balances;
     type PalletId = StakePalletId;
+    type OneMillionNormalizedInitDailyOutput = OneMillionNormalizedInitDailyOutputConst;
+    type DurationInBlockNum = SevenDaysInBlockNum;
     type WeightInfo = ();
 }
 

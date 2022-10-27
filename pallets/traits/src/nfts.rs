@@ -20,7 +20,7 @@ pub trait Nfts<AccountId> {
 
 impl<AccountId> Nfts<AccountId> for ()
 where
-    AccountId: From<Vec<u8>>,
+    AccountId: TryFrom<&'static [u8]>,
 {
     type DecentralizedId = u32;
     type NftId = u32;
@@ -41,10 +41,7 @@ where
 
     fn get_nft_pot(_nft_id: Self::NftId) -> Option<AccountId> {
         //Alice
-        Some(AccountId::from(
-            "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"
-                .as_bytes()
-                .to_vec(),
-        ))
+        let account_bytes = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY".as_bytes();
+        Some(AccountId::try_from(account_bytes).map_err(|_| "").unwrap())
     }
 }
