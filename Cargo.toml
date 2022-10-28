@@ -1,11 +1,9 @@
 [workspace]
 members = [
     'nodes/dana',
-    'nodes/para',
     'pallets/*',
     'primitives',
     'runtimes/dana',
-    'runtimes/para',
 ]
 
 [profile.dev]
