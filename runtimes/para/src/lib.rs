@@ -53,7 +53,6 @@ pub use parami_primitives::{
     deposit, names, AccountId, Address, AssetId, Balance, BalanceWrapper, BlockNumber,
     DecentralizedId, Hash, Header, Index, Moment, NftId, Signature,
 };
-use parami_swap::LinearFarmingCurve;
 use parami_traits::Nfts;
 use parami_traits::Swaps;
 
@@ -1570,6 +1569,7 @@ parameter_types! {
     pub const DefaultInitialMintingDeposit: Balance = 1_000 * DOLLARS;
     pub const InitialMintingLockupPeriod: BlockNumber = 6 * 30 * DAYS;
     pub const InitialMintingValueBase: Balance = 1_000_000 * DOLLARS;
+    pub const StakingRewardAmountParam: Balance = 7_000_000 * DOLLARS;
     pub const NftPendingLifetime: BlockNumber = 5;
     pub const NftPalletId: PalletId = PalletId(*names::NFT);
 }
@@ -1596,7 +1596,6 @@ impl parami_nft::Config for Runtime {
 impl parami_ocw::Config for Runtime {}
 
 parameter_types! {
-    pub const InitialFarmingReward: Balance = 100 * DOLLARS;
     pub const SwapPalletId: PalletId = PalletId(*names::SWAP);
 }
 
@@ -1605,8 +1604,9 @@ impl parami_swap::Config for Runtime {
     type AssetId = AssetId;
     type Assets = Assets;
     type Currency = Balances;
-    type FarmingCurve = LinearFarmingCurve<Runtime, InitialFarmingReward, InitialMintingValueBase>;
     type PalletId = SwapPalletId;
+    type Stakes = Stake;
+    type StakingRewardAmount = StakingRewardAmountParam;
     type WeightInfo = parami_swap::weights::SubstrateWeight<Runtime>;
 }
 
@@ -1999,7 +1999,7 @@ impl_runtime_apis! {
             lp_token_id: AssetId,
         ) -> Result<BalanceWrapper<Balance>, DispatchError> {
             Swap::calculate_reward(lp_token_id)
-                .map(|(_, reward)| reward.into())
+                .map(|reward| reward.into())
         }
     }
 

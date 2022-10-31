@@ -125,19 +125,19 @@ pub fn invariant_holds_after_multi_stake_and_multi_withdraw() {
 
         let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
 
-        assert_ok!(Stake::stake(20, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, 20));
 
         System::set_block_number(20);
 
-        assert_ok!(Stake::stake(20, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, 20));
 
         System::set_block_number(40);
 
-        assert_ok!(Stake::stake(20, asset_id, &CHARLIE));
+        assert_ok!(Stake::stake(asset_id, &CHARLIE, 20));
 
         System::set_block_number(60);
 
-        assert_ok!(Stake::stake(20, asset_id, &CHARLIE));
+        assert_ok!(Stake::stake(asset_id, &CHARLIE, 20));
 
         let reward_pot_balance = Assets::balance(asset_id, activity.reward_pot);
 
@@ -176,7 +176,7 @@ pub fn total_supply_and_user_balance_should_change_exactly_after_withdraw() {
         assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
         assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
 
-        assert_ok!(Stake::stake(20, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, 20));
 
         System::set_block_number(20);
 
@@ -211,7 +211,7 @@ pub fn total_supply_and_user_balance_should_change_after_stake() {
         let user_balance_before = <UserStakingBalanceStore<Test>>::get(asset_id, &ALICE);
 
         let stake_amount = 20;
-        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, stake_amount));
 
         let activity_after = <StakingActivityStore<Test>>::get(asset_id).unwrap();
         let user_balance_after_stake = <UserStakingBalanceStore<Test>>::get(asset_id, &ALICE);
@@ -232,7 +232,7 @@ pub fn total_supply_and_user_balance_should_not_change_after_get_reward() {
         assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
         assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
         let stake_amount = 20;
-        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, stake_amount));
 
         let activity_before_get_reward = <StakingActivityStore<Test>>::get(asset_id).unwrap();
         let user_balance_before_get_reward = <UserStakingBalanceStore<Test>>::get(asset_id, &ALICE);
@@ -261,7 +261,7 @@ pub fn earnings_per_share_and_total_remains_and_pot_balance_should_change_exatly
         assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
         assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
         let stake_amount = 20;
-        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, stake_amount));
 
         let activity_before = <StakingActivityStore<Test>>::get(asset_id).unwrap();
         let reward_pot_balance_before = Assets::balance(asset_id, activity_before.reward_pot);
@@ -304,7 +304,7 @@ pub fn halve_time_and_daily_output_should_change_after_hit_halve_time_in_make_pr
         assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
         assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
         let stake_amount = 100;
-        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, stake_amount));
         System::set_block_number(
             Into::<u64>::into(<Test as Config>::DurationInBlockNum::get()) + 2u64,
         );
@@ -335,7 +335,7 @@ pub fn last_block_should_change_after_make_profit() {
         assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
 
         let stake_amount = 100;
-        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, stake_amount));
         let block_num = 20;
         System::set_block_number(block_num);
 
@@ -381,7 +381,7 @@ pub fn earned_should_decrease_to_zero_after_withdraw() {
         let stake_amount = 20;
         assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
         assert_ok!(Stake::start(asset_id, reward_total_amount));
-        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, stake_amount));
         let cur_block_num = 20;
         System::set_block_number(cur_block_num);
 
@@ -408,7 +408,7 @@ pub fn earned_should_decrease_to_zero_after_get_reward() {
         let stake_amount = 20;
         assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
         assert_ok!(Stake::start(asset_id, reward_total_amount));
-        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, stake_amount));
         let cur_block_num = 20;
         System::set_block_number(cur_block_num);
 
@@ -434,7 +434,7 @@ pub fn earned_should_increase_exactly_after_stake() {
         let stake_amount = 20;
         assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
         assert_ok!(Stake::start(asset_id, reward_total_amount));
-        assert_ok!(Stake::stake(stake_amount, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, stake_amount));
         let cur_block_num = 20;
         System::set_block_number(cur_block_num);
 
@@ -457,7 +457,7 @@ pub fn earned_should_be_zero_when_stake_in_the_same_block_with_start() {
 
         assert_ok!(Stake::start(asset_id, reward_total_amount));
 
-        assert_ok!(Stake::stake(20, asset_id, &ALICE));
+        assert_ok!(Stake::stake(asset_id, &ALICE, 20));
 
         let earned = Stake::earned(asset_id, &ALICE).unwrap();
 

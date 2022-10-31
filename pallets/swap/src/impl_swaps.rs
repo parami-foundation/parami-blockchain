@@ -74,7 +74,7 @@ impl<T: Config> Swaps<AccountOf<T>> for Pallet<T> {
     }
 
     fn mint(
-        who: AccountOf<T>,
+        who: &AccountOf<T>,
         token_id: Self::AssetId,
         currency: Self::QuoteBalance,
         min_liquidity: Self::TokenBalance,
@@ -143,7 +143,11 @@ impl<T: Config> Swaps<AccountOf<T>> for Pallet<T> {
         <Metadata<T>>::insert(token_id, meta);
 
         Self::deposit_event(Event::LiquidityAdded(
-            token_id, who, liquidity, currency, tokens,
+            token_id,
+            who.clone(),
+            liquidity,
+            currency,
+            tokens,
         ));
 
         Ok((tokens, liquidity))
@@ -166,7 +170,7 @@ impl<T: Config> Swaps<AccountOf<T>> for Pallet<T> {
     }
 
     fn burn(
-        who: AccountOf<T>,
+        who: &AccountOf<T>,
         lp_token_id: Self::AssetId,
         min_currency: Self::QuoteBalance,
         min_tokens: Self::TokenBalance,
@@ -206,7 +210,7 @@ impl<T: Config> Swaps<AccountOf<T>> for Pallet<T> {
 
         Self::deposit_event(Event::LiquidityRemoved(
             liquidity.token_id,
-            who,
+            who.clone(),
             liquidity.amount,
             currency,
             tokens,

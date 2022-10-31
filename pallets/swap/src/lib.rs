@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub use farming::{FarmingCurve, LinearFarmingCurve};
 pub use pallet::*;
 
 #[rustfmt::skip]
@@ -15,7 +14,6 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
-mod farming;
 mod functions;
 mod impl_swaps;
 pub mod migrations;
@@ -33,8 +31,10 @@ use frame_support::{
     },
     PalletId,
 };
+use parami_traits::Stakes;
 use parami_traits::Swaps;
 use sp_runtime::traits::{AtLeast32BitUnsigned, Bounded, Saturating, Zero};
+use sp_runtime::DispatchError;
 use sp_std::prelude::*;
 
 use weights::WeightInfo;
@@ -76,12 +76,14 @@ pub mod pallet {
         /// The currency trait
         type Currency: Currency<AccountOf<Self>>;
 
-        /// The curve for seasoned orffering
-        type FarmingCurve: FarmingCurve<Self>;
-
         /// The pallet id, used for deriving liquid accounts
         #[pallet::constant]
         type PalletId: Get<PalletId>;
+
+        #[pallet::constant]
+        type StakingRewardAmount: Get<BalanceOf<Self>>;
+
+        type Stakes: Stakes<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>;
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
@@ -118,6 +120,7 @@ pub mod pallet {
         LiquidityOf<T>,
     >;
 
+    //TODO(ironman_ch): remove this storage
     /// Liquid Provider Token Account
     #[pallet::storage]
     pub(super) type Account<T: Config> = StorageDoubleMap<
@@ -199,6 +202,8 @@ pub mod pallet {
 
             Self::new(token_id)?;
 
+            T::Stakes::start(token_id, T::StakingRewardAmount::get())?;
+
             Ok(())
         }
 
@@ -225,14 +230,16 @@ pub mod pallet {
 
             let who = ensure_signed(origin)?;
 
-            let _ = Self::mint(
-                who,
+            let (_, liquidity) = Self::mint(
+                &who,
                 token_id,
                 currency,
                 min_liquidity,
                 max_tokens,
                 true, // keep alive
             )?;
+
+            T::Stakes::stake(token_id, &who, liquidity)?;
 
             Ok(())
         }
@@ -257,7 +264,10 @@ pub mod pallet {
 
             let who = ensure_signed(origin)?;
 
-            let _ = Self::burn(who, lp_token_id, min_currency, min_tokens)?;
+            let (asset_id, liquidity, _, _) =
+                Self::burn(&who, lp_token_id, min_currency, min_tokens)?;
+
+            T::Stakes::withdraw(asset_id, &who, liquidity)?;
 
             Ok(())
         }
@@ -433,15 +443,15 @@ pub mod pallet {
 
 impl<T: Config> Pallet<T> {
     pub fn acquire_reward_inner(who: AccountOf<T>, lp_token_id: AssetOf<T>) -> DispatchResult {
-        let (liquidity, reward) = Self::calculate_reward(lp_token_id)?;
-
+        let liquidity = <Liquidity<T>>::get(lp_token_id).ok_or(Error::<T>::NotExists)?;
         ensure!(liquidity.owner == who, Error::<T>::NotExists);
-
-        T::Assets::mint_into(liquidity.token_id, &who, reward)?;
-
-        let claimed = <frame_system::Pallet<T>>::block_number();
-        <Account<T>>::insert(&who, lp_token_id, claimed);
-
+        T::Stakes::get_reward(liquidity.token_id, &who)?;
         Ok(())
+    }
+
+    pub fn calculate_reward(lp_token_id: AssetOf<T>) -> Result<BalanceOf<T>, DispatchError> {
+        let liquidity = <Liquidity<T>>::get(lp_token_id).ok_or(Error::<T>::NotExists)?;
+        let should_earn_amount = T::Stakes::earned(liquidity.token_id, &liquidity.owner)?;
+        Ok(should_earn_amount)
     }
 }
