@@ -51,6 +51,7 @@ impl<T: Config> Swaps<AccountOf<T>> for Pallet<T> {
             types::Swap {
                 created,
                 liquidity: Zero::zero(),
+                enable_staking: false,
             },
         );
 

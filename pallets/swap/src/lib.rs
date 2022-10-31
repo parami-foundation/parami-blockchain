@@ -202,7 +202,10 @@ pub mod pallet {
 
             Self::new(token_id)?;
 
-            T::Stakes::start(token_id, T::StakingRewardAmount::get())?;
+            let meta = <Metadata<T>>::get(token_id).unwrap();
+            if meta.enable_staking {
+                T::Stakes::start(token_id, T::StakingRewardAmount::get())?;
+            }
 
             Ok(())
         }
@@ -239,7 +242,10 @@ pub mod pallet {
                 true, // keep alive
             )?;
 
-            T::Stakes::stake(token_id, &who, liquidity)?;
+            let meta = <Metadata<T>>::get(token_id).unwrap();
+            if meta.enable_staking {
+                T::Stakes::stake(token_id, &who, liquidity)?;
+            }
 
             Ok(())
         }
@@ -267,7 +273,10 @@ pub mod pallet {
             let (asset_id, liquidity, _, _) =
                 Self::burn(&who, lp_token_id, min_currency, min_tokens)?;
 
-            T::Stakes::withdraw(asset_id, &who, liquidity)?;
+            let meta = <Metadata<T>>::get(asset_id).unwrap();
+            if meta.enable_staking {
+                T::Stakes::withdraw(asset_id, &who, liquidity)?;
+            }
 
             Ok(())
         }
