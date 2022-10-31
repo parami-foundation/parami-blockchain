@@ -800,7 +800,7 @@ impl<T: Config> Pallet<T> {
 
             let signer_is_advertiser = signer_account
                 .clone()
-                .map(|account| parami_advertiser::Pallet::<T>::is_account_advertiser(&account))
+                .map(|account| parami_advertiser::Pallet::<T>::is_advertiser(&account))
                 .unwrap_or(false);
 
             if signer_is_advertiser || *score < 0i8 {

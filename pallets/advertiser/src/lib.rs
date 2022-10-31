@@ -161,7 +161,7 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        pub fn is_account_advertiser(who: &AccountOf<T>) -> bool {
+        pub fn is_advertiser(who: &AccountOf<T>) -> bool {
             let minimum = T::MinimumDeposit::get();
 
             let id = <T as Config>::PalletId::get();
@@ -182,7 +182,7 @@ impl<T: pallet::Config> EnsureOrigin<T::Origin> for EnsureAdvertiser<T> {
 
         let (did, who) = EnsureDid::<T>::ensure_origin(o).or(Err(T::Origin::none()))?;
 
-        if Pallet::<T>::is_account_advertiser(&who) {
+        if Pallet::<T>::is_advertiser(&who) {
             Ok((did, who))
         } else {
             Err(T::Origin::none())
