@@ -1180,7 +1180,7 @@ fn should_not_reward_if_score_is_zero() {
 }
 
 #[test]
-pub fn non_advertisers_should_not_affect_ratin__when_score_diff_is_positive() {
+pub fn non_advertisers_should_not_affect_ratin_when_score_diff_is_positive() {
     new_test_ext().execute_with(|| {
         // 1. prepare
         let (ad, nft) = prepare_pay!();
