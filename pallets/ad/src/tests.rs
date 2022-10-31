@@ -1128,7 +1128,7 @@ fn should_claim_success_when_signature_not_exists() {
 }
 
 #[test]
-fn should_not_reward_if_score_is_zero() {
+fn should_not_reward_if_score_is_negative() {
     new_test_ext().execute_with(|| {
         // 1. prepare
         let (ad, nft) = prepare_pay!(1u128, 1u128, 10u128, 10u128);
