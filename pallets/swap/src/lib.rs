@@ -25,7 +25,8 @@ use frame_support::{
     ensure,
     traits::{
         tokens::fungibles::{
-            InspectMetadata as FungMeta, Mutate as FungMutate, Transfer as FungTransfer,
+            Inspect as FungInspect, InspectMetadata as FungMeta, Mutate as FungMutate,
+            Transfer as FungTransfer,
         },
         Currency, Get,
     },
@@ -71,7 +72,8 @@ pub mod pallet {
         /// The assets trait to create, mint, and transfer fungible tokens
         type Assets: FungMeta<AccountOf<Self>, AssetId = AssetOf<Self>>
             + FungMutate<AccountOf<Self>, AssetId = Self::AssetId, Balance = BalanceOf<Self>>
-            + FungTransfer<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>;
+            + FungTransfer<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>
+            + FungInspect<AccountOf<Self>>;
 
         /// The currency trait
         type Currency: Currency<AccountOf<Self>>;

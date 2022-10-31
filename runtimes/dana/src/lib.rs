@@ -99,7 +99,7 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    // (parami_swap::migrations::v3::RemoveAllLiquidityExceptInitialLiquidity<Runtime>),
+    parami_swap::migrations::v4::ReInitStakingRewardOfOldNfts<Runtime>,
 >;
 
 /// Era type as expected by this runtime.

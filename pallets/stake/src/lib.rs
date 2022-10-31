@@ -305,6 +305,11 @@ pub mod pallet {
             let already_exists = <StakingActivityStore<T>>::contains_key(asset_id);
             ensure!(!already_exists, Error::<T>::ActivityAlreadyExists);
 
+            ensure!(
+                reward_total_amount > Zero::zero(),
+                Error::<T>::InvalidAmount
+            );
+
             let cur_blocknum = <frame_system::Pallet<T>>::block_number();
             let duration = T::DurationInBlockNum::get();
 

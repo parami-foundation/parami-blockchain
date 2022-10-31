@@ -19,7 +19,6 @@ pub const BOB: sr25519::Public = sr25519::Public([
     242, 60, 222, 145, 142, 98, 183, 108, 10, 190, 123,
 ]);
 pub const CHARLIE: sr25519::Public = sr25519::Public([3; 32]);
-pub const DAVE: sr25519::Public = sr25519::Public([4; 32]);
 
 frame_support::construct_runtime!(
     pub enum Test where
