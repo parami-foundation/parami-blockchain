@@ -1,5 +1,6 @@
 use crate::{mock::*, Config, StakingActivityStore, UserStakingBalanceStore};
 use frame_support::assert_ok;
+use parami_traits::Stakes;
 use sp_runtime::traits::BlockNumberProvider;
 
 /*Profit Invariants Start */
