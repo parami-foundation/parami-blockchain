@@ -1612,8 +1612,9 @@ impl parami_swap::Config for Runtime {
 
 parameter_types! {
     pub const StakePalletId: PalletId = PalletId(*names::STAKE);
-    pub const OneMillionNormalizedInitDailyOutputConst: Balance = (500_000u128 * 10u128.pow(18)) / 7u128;
-    pub const SevenDaysInBlockNum: BlockNumber = 7 * 24 * 60 * 5; //7 days
+    pub const OneMillionNormalizedInitDailyOutputConst: Balance = (500_000u128 * DOLLARS) / 7u128;
+    pub const SevenDaysInBlockNum: BlockNumber = 7 * DAYS;
+    pub const BlocksPerDayParam: BlockNumber = DAYS;
 }
 
 impl parami_stake::Config for Runtime {
@@ -1623,7 +1624,8 @@ impl parami_stake::Config for Runtime {
     type Assets = Assets;
     type PalletId = StakePalletId;
     type OneMillionNormalizedInitDailyOutput = OneMillionNormalizedInitDailyOutputConst;
-    type DurationInBlockNum = SevenDaysInBlockNum;
+    type HalvingDurationInBlockNum = SevenDaysInBlockNum;
+    type BlocksPerDay = BlocksPerDayParam;
     type WeightInfo = parami_stake::weights::SubstrateWeight<Runtime>;
 }
 

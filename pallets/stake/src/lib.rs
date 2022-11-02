@@ -107,7 +107,10 @@ pub mod pallet {
         type OneMillionNormalizedInitDailyOutput: Get<BalanceOf<Self>>;
 
         #[pallet::constant]
-        type DurationInBlockNum: Get<Self::BlockNumber>;
+        type HalvingDurationInBlockNum: Get<Self::BlockNumber>;
+
+        #[pallet::constant]
+        type BlocksPerDay: Get<Self::BlockNumber>;
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
@@ -152,7 +155,10 @@ pub mod pallet {
 
     #[pallet::event]
     #[pallet::generate_deposit(pub fn deposit_event)]
-    pub enum Event<T> {}
+    pub enum Event<T: Config> {
+        Staked(AssetIdOf<T>, AccountOf<T>, BalanceOf<T>),
+        RewardPaid(AssetIdOf<T>, AccountOf<T>, BalanceOf<T>),
+    }
 
     #[pallet::error]
     pub enum Error<T> {
@@ -176,8 +182,10 @@ pub mod pallet {
             let activity =
                 <StakingActivityStore<T>>::get(asset_id).ok_or(Error::<T>::ActivityNotExists)?;
             //one block per 12 seconds, so 1 day has 7200 blocks
-            //TODO(ironman_ch): use const in parami_primitive
-            Ok(activity.daily_output / 7200u32.into())
+            let blocks_per_day_u32: u32 = T::BlocksPerDay::get()
+                .try_into()
+                .map_err(|_| Error::<T>::TypeCastError)?;
+            Ok(activity.daily_output / blocks_per_day_u32.into())
         }
 
         /*
@@ -202,7 +210,7 @@ pub mod pallet {
                 <StakingActivityStore<T>>::mutate(activity.asset_id, |activity| {
                     if let Some(activity) = activity {
                         activity.daily_output = activity.daily_output / 2u32.into();
-                        activity.halve_time = cur_block_num + T::DurationInBlockNum::get();
+                        activity.halve_time = cur_block_num + T::HalvingDurationInBlockNum::get();
                     }
                 });
             }
@@ -311,7 +319,7 @@ pub mod pallet {
             );
 
             let cur_blocknum = <frame_system::Pallet<T>>::block_number();
-            let duration = T::DurationInBlockNum::get();
+            let duration = T::HalvingDurationInBlockNum::get();
 
             let normalized_daily_output_u128: u128 = T::OneMillionNormalizedInitDailyOutput::get()
                 .try_into()
@@ -446,8 +454,8 @@ pub mod pallet {
 
             Self::stake_inner(asset_id, &account, amount);
 
+            Self::deposit_event(Event::Staked(asset_id, account.clone(), amount));
             Ok(())
-            // TODO(ironman_ch): emit Staked(msg.sender, amount);
         }
 
         /*
@@ -507,7 +515,7 @@ pub mod pallet {
                         * Self::staking_balance_of_inner(activity.asset_id, account),
                 );
                 Self::transfer_to(activity.asset_id, account, reward)?;
-                //TODO(ironman_ch): emit RewardPaid(msg.sender, reward);
+                Self::deposit_event(Event::RewardPaid(asset_id, account.clone(), reward));
             }
 
             Ok(reward)

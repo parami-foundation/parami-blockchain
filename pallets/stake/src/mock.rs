@@ -117,6 +117,7 @@ parameter_types! {
     pub const StakePalletId: PalletId = PalletId(*b"prm/stak");
     pub const OneMillionNormalizedInitDailyOutputConst: Balance = (500_000u128 * 10u128.pow(18)) / 45u128;
     pub const SevenDaysInBlockNum: BlockNumber = 45 * 24 * 60 * 5; //45 days
+    pub const BlocksPerDayParam: BlockNumber = 24 * 60 * 5;
 }
 
 impl parami_stake::Config for Test {
@@ -126,7 +127,8 @@ impl parami_stake::Config for Test {
     type Currency = Balances;
     type PalletId = StakePalletId;
     type OneMillionNormalizedInitDailyOutput = OneMillionNormalizedInitDailyOutputConst;
-    type DurationInBlockNum = SevenDaysInBlockNum;
+    type HalvingDurationInBlockNum = SevenDaysInBlockNum;
+    type BlocksPerDay = BlocksPerDayParam;
     type WeightInfo = ();
 }
 

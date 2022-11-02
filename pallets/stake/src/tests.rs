@@ -150,7 +150,7 @@ mod activity_invariant {
 
             let earned_total = Stake::earned(asset_id, &ALICE).unwrap()
                 + Stake::earned(asset_id, &CHARLIE).unwrap();
-            assert_eq!(reward_pot_balance, earned_total,);
+            assert_eq_escape_precision_effect(reward_pot_balance, earned_total);
         });
     }
 
@@ -173,7 +173,7 @@ mod activity_invariant {
     }
 
     #[test]
-    pub fn daily_output_down_to_1_about_2_years() {
+    pub fn daily_output_down_to_1_in_about_2_years() {
         new_test_ext().execute_with(|| {
             let asset_id = 1;
             assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
@@ -182,13 +182,13 @@ mod activity_invariant {
             assert_ok!(Stake::stake(asset_id, &ALICE, 20u128));
 
             let half_times = Into::<u64>::into(2 * 365 * constants::DAYS)
-                / <Test as Config>::DurationInBlockNum::get();
+                / <Test as Config>::HalvingDurationInBlockNum::get();
 
             for _ in 0..half_times {
                 let cur_block_num = System::current_block_number();
 
                 System::set_block_number(
-                    cur_block_num + <Test as Config>::DurationInBlockNum::get() + 1,
+                    cur_block_num + <Test as Config>::HalvingDurationInBlockNum::get() + 1,
                 );
 
                 assert_ok!(Stake::make_profit(asset_id));
@@ -374,10 +374,6 @@ mod staking_activity {
         });
     }
 
-    fn assert_eq_escape_precision_effect(left: u128, right: u128) {
-        assert_eq!(left / 10u128.pow(2), right / 10u128.pow(2));
-    }
-
     #[test]
     pub fn halve_time_and_daily_output_should_change_after_hit_halve_time_in_make_profit() {
         new_test_ext().execute_with(|| {
@@ -387,7 +383,7 @@ mod staking_activity {
             let stake_amount = 100;
             assert_ok!(Stake::stake(asset_id, &ALICE, stake_amount));
             System::set_block_number(
-                Into::<u64>::into(<Test as Config>::DurationInBlockNum::get()) + 2u64,
+                Into::<u64>::into(<Test as Config>::HalvingDurationInBlockNum::get()) + 2u64,
             );
 
             let activity_before = <StakingActivityStore<Test>>::get(asset_id).unwrap();
@@ -399,11 +395,11 @@ mod staking_activity {
             assert_eq!(
                 activity_after.halve_time,
                 System::current_block_number()
-                    + Into::<u64>::into(<Test as Config>::DurationInBlockNum::get())
+                    + Into::<u64>::into(<Test as Config>::HalvingDurationInBlockNum::get())
             );
-            assert_eq!(
+            assert_eq_escape_precision_effect(
                 activity_before.daily_output,
-                activity_after.daily_output * 2
+                activity_after.daily_output * 2,
             )
         });
     }
@@ -427,6 +423,10 @@ mod staking_activity {
             assert_eq!(activity_after.lastblock, block_num);
         });
     }
+}
+
+fn assert_eq_escape_precision_effect(left: u128, right: u128) {
+    assert_eq!(left / 10u128.pow(3), right / 10u128.pow(3));
 }
 /*
  * For Staking Activity End
