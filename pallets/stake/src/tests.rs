@@ -115,6 +115,9 @@ mod profit_invariants {
 
 /* For Invariants Start */
 mod activity_invariant {
+
+    use parami_primitives::constants::{self, DOLLARS};
+
     use super::*;
     #[test]
     pub fn invariant_holds_after_multi_stake_and_multi_withdraw() {
@@ -166,6 +169,43 @@ mod activity_invariant {
 
                 exists_pots.insert(activity.reward_pot);
             }
+        });
+    }
+
+    #[test]
+    pub fn daily_output_down_to_1_about_2_years() {
+        new_test_ext().execute_with(|| {
+            let asset_id = 1;
+            assert_ok!(Assets::force_create(Origin::root(), asset_id, BOB, true, 1));
+            assert_ok!(Stake::start(asset_id, 7_000_000u128 * 10u128.pow(18)));
+
+            assert_ok!(Stake::stake(asset_id, &ALICE, 20u128));
+
+            let half_times = Into::<u64>::into(2 * 365 * constants::DAYS)
+                / <Test as Config>::DurationInBlockNum::get();
+
+            for _ in 0..half_times {
+                let cur_block_num = System::current_block_number();
+
+                System::set_block_number(
+                    cur_block_num + <Test as Config>::DurationInBlockNum::get() + 1,
+                );
+
+                assert_ok!(Stake::make_profit(asset_id));
+            }
+
+            let activity = <StakingActivityStore<Test>>::get(asset_id).unwrap();
+
+            println!(
+                "after two years, daily_output is {:?}",
+                activity.daily_output
+            );
+
+            assert!(
+                activity.daily_output > 1 * DOLLARS,
+                "after two years, daily output should be G.T. 1 DOLLARS! daily_outpus is {:?}",
+                activity.daily_output
+            );
         });
     }
 }

@@ -115,8 +115,8 @@ impl pallet_balances::Config for Test {
 
 parameter_types! {
     pub const StakePalletId: PalletId = PalletId(*b"prm/stak");
-    pub const OneMillionNormalizedInitDailyOutputConst: Balance = (500_000u128 * 10u128.pow(18)) / 7u128;
-    pub const SevenDaysInBlockNum: BlockNumber = 7 * 24 * 60 * 5; //7 days
+    pub const OneMillionNormalizedInitDailyOutputConst: Balance = (500_000u128 * 10u128.pow(18)) / 45u128;
+    pub const SevenDaysInBlockNum: BlockNumber = 45 * 24 * 60 * 5; //45 days
 }
 
 impl parami_stake::Config for Test {
