@@ -142,12 +142,8 @@ jobs:
             target/            
           key: ${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.arch }}-cargo-
-
-      - name: Run Test
-        run: cargo test -- --nocapture --quiet
-
+            
       - name: Generate coverage
-        continue-on-error: true
         run: |
           cargo tarpaulin --forward --release --locked -t 120 -o Xml \
           --ignore-tests --workspace \
