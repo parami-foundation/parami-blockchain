@@ -145,7 +145,7 @@ jobs:
             
       - name: Generate coverage
         run: |
-          cargo tarpaulin --forward --release --locked -t 120 -o Xml \
+          cargo tarpaulin --forward --release --locked -t 1200 -o Xml \
           --ignore-tests --workspace \
           --exclude parami-primitives parami-traits parami-swap-rpc parami-did-rpc parami-nft-rpc \
           parami-dana parami-para parami-dana-runtime parami-para-runtime \
