@@ -12,7 +12,7 @@ use frame_support::{
         Get,
     },
 };
-use parami_traits::Swaps;
+use parami_traits::{Stakes, Swaps};
 use sp_runtime::traits::{AccountIdConversion, CheckedAdd, One, Saturating, Zero};
 use sp_std::boxed::Box;
 
@@ -46,14 +46,17 @@ impl<T: Config> Swaps<AccountOf<T>> for Pallet<T> {
 
         let created = <frame_system::Pallet<T>>::block_number();
 
-        <Metadata<T>>::insert(
-            token_id,
-            types::Swap {
-                created,
-                liquidity: Zero::zero(),
-                enable_staking: false,
-            },
-        );
+        let swap = types::Swap {
+            created,
+            liquidity: Zero::zero(),
+            enable_staking: false,
+        };
+
+        if swap.enable_staking {
+            T::Stakes::start(token_id, T::StakingRewardAmount::get())?;
+        }
+
+        <Metadata<T>>::insert(token_id, &swap);
 
         Self::deposit_event(Event::Created(token_id));
 
@@ -125,6 +128,11 @@ impl<T: Config> Swaps<AccountOf<T>> for Pallet<T> {
             *id = id.checked_add(&One::one()).ok_or(Error::<T>::Overflow)?;
             Ok(current_id)
         })?;
+
+        if meta.enable_staking {
+            T::Stakes::stake(token_id, &who, liquidity)?;
+        }
+
         <Liquidity<T>>::insert(
             lp_token_id,
             types::Liquidity {
@@ -202,6 +210,11 @@ impl<T: Config> Swaps<AccountOf<T>> for Pallet<T> {
         }
 
         meta.liquidity.saturating_reduce(liquidity.amount);
+
+        if meta.enable_staking {
+            T::Stakes::withdraw(liquidity.token_id, &liquidity.owner, liquidity.amount)?;
+        }
+
         <Metadata<T>>::insert(liquidity.token_id, meta);
 
         let pot = Self::get_pool_account(liquidity.token_id);
