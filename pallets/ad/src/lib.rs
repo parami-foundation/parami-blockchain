@@ -799,8 +799,6 @@ impl<T: Config> Pallet<T> {
         signer_did: &Option<DidOf<T>>,
         signer_account: &Option<AccountOf<T>>,
     ) -> Result<(), DispatchError> {
-        ensure!(!scores.is_empty(), Error::<T>::EmptyTags);
-
         let height = <frame_system::Pallet<T>>::block_number();
 
         let endtime = <EndtimeOf<T>>::get(&ad_id).ok_or(Error::<T>::NotExists)?;
