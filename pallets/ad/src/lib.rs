@@ -153,6 +153,18 @@ pub mod pallet {
         HeightOf<T>,
     >;
 
+    #[pallet::storage]
+    pub(super) type ReadyToRate<T: Config> = StorageNMap<
+        _,
+        (
+            NMapKey<Identity, HashOf<T>>,
+            NMapKey<Twox64Concat, NftOf<T>>,
+            NMapKey<Identity, DidOf<T>>,
+        ),
+        bool,
+        ValueQuery,
+    >;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -210,6 +222,7 @@ pub mod pallet {
         FungibleNotForSlot,
         InvalidSignature,
         Overflow,
+        Rated,
     }
 
     #[pallet::call]
@@ -538,7 +551,7 @@ pub mod pallet {
 
             let scores = tag_names.map(|t| (t, -5i8)).collect();
 
-            Self::pay_inner(
+            let result = Self::pay_inner(
                 &ad_id,
                 nft_id,
                 &origin_did,
@@ -546,7 +559,38 @@ pub mod pallet {
                 &referrer,
                 &Option::None,
                 &Option::None,
-            )
+            );
+
+            ReadyToRate::<T>::insert((ad_id, nft_id, origin_did), true);
+
+            result
+        }
+
+        #[pallet::weight((0, Pays::No))]
+        pub fn rate(
+            origin: OriginFor<T>,
+            ad_id: HashOf<T>,
+            nft_id: NftOf<T>,
+            visitor_did: DidOf<T>,
+            scores: Vec<(Vec<u8>, i8)>,
+        ) -> DispatchResult {
+            let (origin_did, _) = EnsureDid::<T>::ensure_origin(origin)?;
+
+            Self::ensure_owned_or_delegated_by_ad_id(origin_did, ad_id)?;
+            ensure!(
+                ReadyToRate::<T>::get((ad_id, nft_id, visitor_did)),
+                Error::<T>::Rated
+            );
+
+            for (tag, score) in scores {
+                ensure!(T::Tags::has_tag(&ad_id, &tag), Error::<T>::TagNotExists);
+                ensure!(score >= -5 && score <= 5, Error::<T>::ScoreOutOfRange);
+
+                // recover scores
+                T::Tags::influence(&visitor_did, &tag, (5 + score) as i32)?;
+            }
+
+            return Ok(());
         }
 
         #[pallet::weight(<T as Config>::WeightInfo::pay())]
