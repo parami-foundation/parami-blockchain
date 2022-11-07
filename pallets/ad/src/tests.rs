@@ -1332,6 +1332,7 @@ fn should_fail_if_rated_again() {
             vec![(vec![0u8, 1u8, 2u8, 3u8, 4u8, 5u8], -5)],
             None,
         );
+        assert_ok!(res);
 
         assert_ok!(Ad::rate(
             Origin::signed(BOB),
