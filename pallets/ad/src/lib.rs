@@ -527,22 +527,16 @@ pub mod pallet {
             origin: OriginFor<T>,
             ad_id: HashOf<T>,
             nft_id: NftOf<T>,
-            scores: Vec<(Vec<u8>, i8)>,
+            _scores: Vec<(Vec<u8>, i8)>,
             referrer: Option<DidOf<T>>,
         ) -> DispatchResult {
             let (origin_did, _) = EnsureDid::<T>::ensure_origin(origin)?;
 
-            ensure!(
-                scores
-                    .iter()
-                    .all(|(tag, _score)| { T::Tags::has_tag(&ad_id, tag) }),
-                Error::<T>::TagNotExists
-            );
+            let tag_hashes: Vec<TagOf> = T::Tags::tags_of(&ad_id).into_keys().collect();
 
-            let scores: Vec<(Vec<u8>, i8)> = scores
-                .iter()
-                .map(|(tag, _score)| (tag.to_vec(), -5i8))
-                .collect();
+            let tag_names = T::Tags::tag_names(tag_hashes).into_values();
+
+            let scores = tag_names.map(|t| (t, -5i8)).collect();
 
             Self::pay_inner(
                 &ad_id,

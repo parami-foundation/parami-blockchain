@@ -408,4 +408,15 @@ impl<T: Config> Tags<TagHash, AdOf<T>, T::DecentralizedId> for Pallet<T> {
 
         Ok(())
     }
+
+    fn tag_names(tags: Vec<TagHash>) -> BTreeMap<TagHash, Tag> {
+        let mut map = BTreeMap::new();
+        for hashes in tags {
+            if let Some(meta) = Metadata::<T>::get(hashes) {
+                map.insert(hashes, meta.tag);
+            }
+        }
+
+        return map;
+    }
 }
