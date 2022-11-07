@@ -67,7 +67,7 @@ pub mod v4 {
             info!("begin update metadata");
 
             for (asset_id, meta) in <old::Metadata<T>>::iter() {
-                let is_asset_before_batch_mint = if asset_id < 10025u32.into() {
+                let is_asset_before_batch_mint = if asset_id < 10023u32.into() {
                     true
                 } else {
                     false
@@ -129,7 +129,7 @@ pub mod v4 {
                 }
             }
 
-            assert_eq!(staking_count, 4);
+            assert_eq!(staking_count, 3);
             Ok(())
         }
     }
