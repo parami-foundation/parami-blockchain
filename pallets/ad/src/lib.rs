@@ -582,12 +582,16 @@ pub mod pallet {
                 Error::<T>::Rated
             );
 
+            ReadyToRate::<T>::insert((ad_id, nft_id, visitor_did), false);
+
             for (tag, score) in scores {
                 ensure!(T::Tags::has_tag(&ad_id, &tag), Error::<T>::TagNotExists);
                 ensure!(score >= -5 && score <= 5, Error::<T>::ScoreOutOfRange);
 
+                T::Tags::influence(&visitor_did, &tag, score as i32)?;
+
                 // recover scores
-                T::Tags::influence(&visitor_did, &tag, (5 + score) as i32)?;
+                T::Tags::influence(&visitor_did, &tag, 5)?;
             }
 
             return Ok(());
