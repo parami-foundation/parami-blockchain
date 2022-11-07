@@ -95,41 +95,13 @@ jobs:
           if-no-files-found: error
         if: matrix.arch == 'x86_64' && matrix.os == 'linux'
 
-  test:
-    needs:
-      - build
-
-    strategy:
-      matrix:
-        os: [linux]
-        arch: [ x86_64 ]
-
-    runs-on: ["self-hosted", "${{ matrix.os }}", "${{ matrix.arch }}"]
-
-    steps:
-      - uses: actions/checkout@v3
-      - uses: ./.github/actions/prepare
-        with:
-          os: ${{ matrix.os }}
-
+      #begin test&coverage
       - name: Install tarpaulin
         run: cargo install --locked --force cargo-tarpaulin
-
-      - name: Set up cargo cache
-        uses: actions/cache@v3
-        continue-on-error: false
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/            
-          key: ${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.arch }}-cargo-
-            
+      
       - name: Test & Generate coverage
         run: |
-          cargo tarpaulin --bin parami --forward --release --locked -t 1200 -o Xml \
+          cargo tarpaulin --forward --release --locked -t 1200 -o Xml \
           --ignore-tests --workspace \
           --exclude parami-primitives parami-traits parami-swap-rpc parami-did-rpc parami-nft-rpc \
           parami-dana parami-para parami-dana-runtime parami-para-runtime \
@@ -137,7 +109,7 @@ jobs:
       - uses: codecov/codecov-action@v3
         with:
           fail_ci_if_error: true
-
+      #end test&coverage
   e2e:
     needs:
       - build
@@ -209,7 +181,6 @@ jobs:
     needs:
       - lint
       - build
-      - test
       - e2e
 
     if: startsWith(github.ref, 'refs/tags/r')
