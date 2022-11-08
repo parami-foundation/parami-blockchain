@@ -154,16 +154,8 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    pub(super) type ReadyToRate<T: Config> = StorageNMap<
-        _,
-        (
-            NMapKey<Identity, HashOf<T>>,
-            NMapKey<Twox64Concat, NftOf<T>>,
-            NMapKey<Identity, DidOf<T>>,
-        ),
-        bool,
-        ValueQuery,
-    >;
+    pub(super) type CanRate<T: Config> =
+        StorageDoubleMap<_, Identity, HashOf<T>, Identity, DidOf<T>, bool, ValueQuery>;
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -561,7 +553,7 @@ pub mod pallet {
                 &Option::None,
             );
 
-            ReadyToRate::<T>::insert((ad_id, nft_id, origin_did), true);
+            CanRate::<T>::insert(ad_id, origin_did, true);
 
             result
         }
@@ -570,19 +562,15 @@ pub mod pallet {
         pub fn rate(
             origin: OriginFor<T>,
             ad_id: HashOf<T>,
-            nft_id: NftOf<T>,
             visitor_did: DidOf<T>,
             scores: Vec<(Vec<u8>, i8)>,
         ) -> DispatchResult {
             let (origin_did, _) = EnsureDid::<T>::ensure_origin(origin)?;
 
             Self::ensure_owned_or_delegated_by_ad_id(origin_did, ad_id)?;
-            ensure!(
-                ReadyToRate::<T>::get((ad_id, nft_id, visitor_did)),
-                Error::<T>::Rated
-            );
+            ensure!(CanRate::<T>::get(ad_id, visitor_did), Error::<T>::Rated);
 
-            ReadyToRate::<T>::insert((ad_id, nft_id, visitor_did), false);
+            CanRate::<T>::insert(ad_id, visitor_did, false);
 
             for (tag, score) in scores {
                 ensure!(T::Tags::has_tag(&ad_id, &tag), Error::<T>::TagNotExists);
