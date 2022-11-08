@@ -576,10 +576,8 @@ pub mod pallet {
                 ensure!(T::Tags::has_tag(&ad_id, &tag), Error::<T>::TagNotExists);
                 ensure!(score >= -5 && score <= 5, Error::<T>::ScoreOutOfRange);
 
-                T::Tags::influence(&visitor_did, &tag, score as i32)?;
-
                 // recover scores
-                T::Tags::influence(&visitor_did, &tag, 5)?;
+                T::Tags::influence(&visitor_did, &tag, (score + 5) as i32)?;
             }
 
             return Ok(());

@@ -1308,7 +1308,6 @@ fn should_rate_after_claim_without_score() {
         assert_ok!(Ad::rate(
             Origin::signed(BOB),
             ad,
-            nft,
             DID_CHARLIE,
             vec![(vec![0u8, 1u8, 2u8, 3u8, 4u8, 5u8], 5)]
         ));
@@ -1337,7 +1336,6 @@ fn should_fail_if_rated_again() {
         assert_ok!(Ad::rate(
             Origin::signed(BOB),
             ad,
-            nft,
             DID_CHARLIE,
             vec![(vec![0u8, 1u8, 2u8, 3u8, 4u8, 5u8], 5)]
         ));
@@ -1346,7 +1344,6 @@ fn should_fail_if_rated_again() {
             Ad::rate(
                 Origin::signed(BOB),
                 ad,
-                nft,
                 DID_CHARLIE,
                 vec![(vec![0u8, 1u8, 2u8, 3u8, 4u8, 5u8], 5)]
             ),
