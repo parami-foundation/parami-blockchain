@@ -95,7 +95,6 @@ jobs:
           if-no-files-found: error
         if: matrix.arch == 'x86_64' && matrix.os == 'linux'
 
-      #begin test&coverage
       - name: Install tarpaulin
         run: cargo install --locked --force cargo-tarpaulin
       
@@ -106,10 +105,10 @@ jobs:
           --exclude parami-primitives parami-traits parami-swap-rpc parami-did-rpc parami-nft-rpc \
           parami-dana parami-para parami-dana-runtime parami-para-runtime \
           --exclude-files **/mock.rs **/weights.rs **/weights/* **/migrations.rs **/benchmarking.rs **/rpc/*
+          
       - uses: codecov/codecov-action@v3
         with:
           fail_ci_if_error: true
-      #end test&coverage
   e2e:
     needs:
       - build
