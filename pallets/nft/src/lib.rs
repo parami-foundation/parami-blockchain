@@ -622,7 +622,7 @@ pub mod pallet {
                 Error::<T>::Minted
             );
 
-            let pot = T::PalletId::get().into_sub_account_truncating(&did);
+            let pot = T::PalletId::get().into_sub_account_truncating(&id);
             let free_balance = T::Currency::free_balance(&pot);
             ensure!(free_balance == 0u32.into(), Error::<T>::InsufficientBalance);
 
