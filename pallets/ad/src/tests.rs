@@ -1382,7 +1382,7 @@ fn should_fail_if_payout_base_too_low() {
                 5u128,
                 None
             ),
-            Error::<Test>::PayoutBaseTooLow
+            Error::<Test>::WrongPayoutSetting
         );
     });
 }
