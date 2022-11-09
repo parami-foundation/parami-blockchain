@@ -1369,5 +1369,20 @@ fn should_fail_if_payout_base_too_low() {
             ),
             Error::<Test>::PayoutBaseTooLow
         );
+
+        assert_noop!(
+            Ad::create(
+                Origin::signed(BOB),
+                vec![],
+                [0u8; 64].into(),
+                1,
+                43200 * 2,
+                10u128,
+                0,
+                5u128,
+                None
+            ),
+            Error::<Test>::PayoutBaseTooLow
+        );
     });
 }
