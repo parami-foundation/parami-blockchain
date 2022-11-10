@@ -614,6 +614,20 @@ pub mod pallet {
                 &Option::Some(who),
             )
         }
+
+        #[pallet::weight(<T as Config>::WeightInfo::drawback())]
+        pub fn drawback_slot(
+            origin: OriginFor<T>,
+            ad_id: HashOf<T>,
+            nft_id: NftOf<T>,
+        ) -> DispatchResult {
+            let (did, who) = T::CallOrigin::ensure_origin(origin)?;
+
+            let slot = SlotOf::<T>::get(nft_id).ok_or(Error::<T>::SlotNotExists)?;
+            Self::ensure_owned_or_delegated_by_ad_id(did, ad_id)?;
+
+            Self::drawback(&slot)
+        }
     }
 
     #[pallet::genesis_config]
@@ -633,60 +647,6 @@ pub mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    fn begin_block(now: HeightOf<T>) -> Result<Weight, DispatchError> {
-        let mut read = 0;
-        let mut write = 0;
-
-        let mut amount = 0;
-
-        for (nft_id, ad_id, deadline) in <DeadlineOf<T>>::iter() {
-            read += 1;
-
-            if amount >= 100 {
-                break;
-            }
-
-            if deadline > now {
-                continue;
-            }
-
-            read += 1;
-            let slot = <SlotOf<T>>::get(nft_id);
-            if let Some(slot) = slot {
-                if slot.ad_id != ad_id {
-                    continue;
-                }
-
-                read += 2;
-                write += 4;
-                Self::drawback(&slot)?;
-
-                amount += 1;
-            }
-        }
-
-        let mut amount = 0;
-
-        for (ad_id, endtime) in <EndtimeOf<T>>::iter() {
-            read += 1;
-
-            if amount >= 100 {
-                break;
-            }
-
-            if endtime > now {
-                continue;
-            }
-
-            write += 1;
-            <EndtimeOf<T>>::remove(ad_id);
-
-            amount += 1;
-        }
-
-        Ok(T::DbWeight::get().reads_writes(read as Weight, write as Weight))
-    }
-
     fn drawback(slot: &SlotMetaOf<T>) -> Result<(), DispatchError> {
         let meta = <Metadata<T>>::get(slot.ad_id).ok_or(Error::<T>::NotExists)?;
 

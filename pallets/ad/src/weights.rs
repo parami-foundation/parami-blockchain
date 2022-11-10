@@ -213,4 +213,10 @@ impl WeightInfo for () {
             .saturating_add(RocksDbWeight::get().reads(20 as Weight))
             .saturating_add(RocksDbWeight::get().writes(10 as Weight))
     }
+
+    fn drawback_slot() -> Weight {
+        (123_000_000 as Weight)
+            .saturating_add(RocksDbWeight::get().reads(20 as Weight))
+            .saturating_add(RocksDbWeight::get().writes(10 as Weight))
+    }
 }
