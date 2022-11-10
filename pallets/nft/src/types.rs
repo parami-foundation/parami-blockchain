@@ -29,3 +29,9 @@ pub struct ImportTask<Did> {
     pub token: Vec<u8>,
     pub owner_address: Vec<u8>,
 }
+
+#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, Default, TypeInfo)]
+pub struct IcoMeta<Balance> {
+    pub expected_currency: Balance,
+    pub offered_tokens: Balance,
+}

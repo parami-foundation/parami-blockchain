@@ -31,12 +31,13 @@ use frame_support::{
             nonfungibles::{Create as NftCreate, Mutate as NftMutate},
         },
         Currency, EnsureOrigin,
-        ExistenceRequirement::KeepAlive,
+        ExistenceRequirement::{self, KeepAlive},
         Get, StorageVersion,
     },
     PalletId,
 };
 use frame_system::offchain::SendTransactionTypes;
+use pallet_assets::ExistenceReason;
 use parami_assetmanager::AssetIdManager;
 use parami_did::EnsureDid;
 use parami_traits::{
@@ -228,6 +229,10 @@ pub mod pallet {
     #[pallet::storage]
     pub(super) type Date<T: Config> = StorageMap<_, Twox64Concat, NftOf<T>, HeightOf<T>>;
 
+    #[pallet::storage]
+    pub(super) type IcoMetaOf<T: Config> =
+        StorageMap<_, Twox64Concat, NftOf<T>, IcoMeta<BalanceOf<T>>>;
+
     #[pallet::type_value]
     pub(crate) fn DefaultId<T: Config>() -> NftOf<T> {
         One::one()
@@ -289,6 +294,7 @@ pub mod pallet {
         OcwParseError,
         NotTokenOwner,
         InvalidSignature,
+        InsufficientToken,
     }
 
     #[pallet::call]
@@ -703,6 +709,78 @@ pub mod pallet {
         }
 
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
+        pub fn mint_and_ico(
+            origin: OriginFor<T>,
+            nft_id: NftOf<T>,
+            name: Vec<u8>,
+            symbol: Vec<u8>,
+            minted_tokens: BalanceOf<T>,
+            expected_currency: BalanceOf<T>,
+            offered_tokens: BalanceOf<T>,
+        ) -> DispatchResultWithPostInfo {
+            let (did, account) = EnsureDid::<T>::ensure_origin(origin)?;
+            let mut meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
+
+            ensure!(did == meta.owner, Error::<T>::NotTokenOwner);
+            ensure!(
+                offered_tokens <= minted_tokens,
+                Error::<T>::InsufficientToken
+            );
+            ensure!(!meta.minted, Error::<T>::Minted);
+
+            let limit = T::StringLimit::get() as usize - 4;
+            ensure!(
+                0 < name.len() && name.len() <= limit,
+                Error::<T>::BadMetadata
+            );
+            ensure!(
+                0 < symbol.len() && symbol.len() <= limit,
+                Error::<T>::BadMetadata
+            );
+
+            let is_valid_char =
+                |c: &u8| c.is_ascii_whitespace() || c.is_ascii_alphanumeric() || *c == b'_';
+
+            ensure!(name.iter().all(is_valid_char), Error::<T>::BadMetadata);
+            ensure!(symbol.iter().all(is_valid_char), Error::<T>::BadMetadata);
+
+            // create nft collection
+            T::Nft::create_collection(&meta.class_id, &meta.pot, &meta.pot)?;
+            T::Nft::mint_into(&meta.class_id, &nft_id, &meta.pot)?;
+
+            // mint funds
+            Self::mint_tokens(minted_tokens, &meta, &account)?;
+
+            // start initial coin offering
+            Self::start_initial_coin_offering(
+                nft_id,
+                expected_currency,
+                offered_tokens,
+                &meta,
+                &account,
+            )?;
+
+            // update metadata
+            meta.minted = true;
+            <Metadata<T>>::insert(nft_id, meta);
+
+            let minted_at = <frame_system::Pallet<T>>::block_number();
+            <Date<T>>::insert(nft_id, minted_at);
+
+            // send event
+            Self::deposit_event(Event::Minted(
+                did,
+                nft_id,
+                nft_id,
+                name,
+                symbol,
+                minted_tokens,
+            ));
+
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
         pub fn set_validate_endpoint(
             origin: OriginFor<T>,
             network: Network,
@@ -952,6 +1030,8 @@ impl<T: Config> Nfts<AccountOf<T>> for Pallet<T> {
 
 use parami_traits::transferable::Transferable;
 
+use crate::types::IcoMeta;
+
 impl<T: Config> Transferable<AccountOf<T>> for Pallet<T> {
     fn transfer_all(src: &AccountOf<T>, dest: &AccountOf<T>) -> Result<(), DispatchError> {
         for (_nft_id, nft_meta) in <Metadata<T>>::iter() {
@@ -960,5 +1040,86 @@ impl<T: Config> Transferable<AccountOf<T>> for Pallet<T> {
         }
 
         Ok(())
+    }
+}
+
+impl<T: Config> Pallet<T> {
+    fn mint_tokens(
+        amount: BalanceOf<T>,
+        metadata: &MetaOf<T>,
+        owner_account: &AccountOf<T>,
+    ) -> Result<(), DispatchError> {
+        let asset_id = metadata.token_asset_id;
+        T::Assets::mint_into(asset_id, owner_account, amount)?;
+
+        Ok(())
+    }
+
+    fn start_initial_coin_offering(
+        nft_id: NftOf<T>,
+        expected_currency: BalanceOf<T>,
+        offered_tokens: BalanceOf<T>,
+        metadata: &MetaOf<T>,
+        owner_account: &AccountOf<T>,
+    ) -> Result<(), DispatchError> {
+        let asset_id = metadata.token_asset_id;
+        let balance = T::Assets::balance(asset_id, owner_account);
+        ensure!(balance >= offered_tokens, Error::<T>::InsufficientToken);
+
+        T::Assets::transfer(asset_id, owner_account, &metadata.pot, balance, false)?;
+
+        let ico_meta = IcoMeta {
+            expected_currency,
+            offered_tokens,
+        };
+
+        IcoMetaOf::<T>::insert(nft_id, ico_meta);
+
+        Ok(())
+    }
+
+    fn buy_coins(
+        amount: BalanceOf<T>,
+        dst_account: AccountOf<T>,
+        metadata: MetaOf<T>,
+        ico_meta: IcoMeta<BalanceOf<T>>,
+    ) -> Result<(), DispatchError> {
+        let remained_tokens = T::Assets::balance(metadata.token_asset_id, &metadata.pot);
+        ensure!(remained_tokens >= amount, Error::<T>::InsufficientToken);
+        let account_balance = T::Currency::free_balance(&dst_account);
+        let required_balance = Self::calulated_required_currency(amount, &ico_meta)?;
+        ensure!(
+            account_balance >= required_balance,
+            Error::<T>::InsufficientBalance
+        );
+
+        T::Assets::transfer(
+            metadata.token_asset_id,
+            &metadata.pot,
+            &dst_account,
+            amount,
+            false,
+        )?;
+        T::Currency::transfer(
+            &dst_account,
+            &metadata.pot,
+            required_balance,
+            ExistenceRequirement::KeepAlive,
+        )?;
+
+        Ok(())
+    }
+
+    fn calulated_required_currency(
+        amount: BalanceOf<T>,
+        ico_meta: &IcoMeta<BalanceOf<T>>,
+    ) -> Result<BalanceOf<T>, DispatchError> {
+        let amount: U512 = Self::try_into(amount)?;
+        let offered_tokens: U512 = Self::try_into(ico_meta.offered_tokens)?;
+        let expected_currency: U512 = Self::try_into(ico_meta.expected_currency)?;
+
+        let required_currency = amount * offered_tokens / expected_currency;
+
+        Ok(Self::try_into(required_currency)?)
     }
 }
