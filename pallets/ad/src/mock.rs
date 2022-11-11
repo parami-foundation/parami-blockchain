@@ -205,6 +205,7 @@ impl parami_nft::Config for Test {
     type PalletId = NftPalletId;
     type PendingLifetime = PendingLifetime;
     type StringLimit = StringLimit;
+    type Stake = ();
     type Swaps = Swap;
     type WeightInfo = ();
     type UnsignedPriority = ();

@@ -37,12 +37,11 @@ use frame_support::{
     PalletId,
 };
 use frame_system::offchain::SendTransactionTypes;
-use pallet_assets::ExistenceReason;
 use parami_assetmanager::AssetIdManager;
 use parami_did::EnsureDid;
 use parami_traits::{
     types::{Network, Task},
-    Links, Nfts, Swaps,
+    Links, Nfts, Stakes, Swaps,
 };
 use sp_core::U512;
 use sp_runtime::{
@@ -74,6 +73,7 @@ pub mod pallet {
     use super::*;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
+    use parami_traits::Stakes;
 
     #[pallet::config]
     pub trait Config:
@@ -148,6 +148,8 @@ pub mod pallet {
             QuoteBalance = BalanceOf<Self>,
             TokenBalance = BalanceOf<Self>,
         >;
+
+        type Stake: Stakes<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>;
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
@@ -773,6 +775,54 @@ pub mod pallet {
                 symbol,
                 minted_tokens,
             ));
+
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
+        pub fn make_swap_and_open_stake(
+            origin: OriginFor<T>,
+            nft_id: NftOf<T>,
+            swap_token_amount: BalanceOf<T>,
+            swap_currency_amount: BalanceOf<T>,
+            stake_reward: BalanceOf<T>,
+        ) -> DispatchResultWithPostInfo {
+            let (did, account) = EnsureDid::<T>::ensure_origin(origin)?;
+            let meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
+            ensure!(meta.owner == did, Error::<T>::NotTokenOwner);
+            let pot_tokens = T::Assets::balance(meta.token_asset_id, &meta.pot);
+            let account_tokens = T::Assets::balance(meta.token_asset_id, &account);
+            ensure!(
+                pot_tokens + account_tokens >= swap_token_amount + stake_reward,
+                Error::<T>::InsufficientToken
+            );
+            let account_currency = T::Currency::free_balance(&account);
+            ensure!(
+                account_currency >= swap_currency_amount,
+                Error::<T>::InsufficientBalance
+            );
+
+            // refund ico pot balance
+            if pot_tokens > 0u32.into() {
+                T::Assets::transfer(meta.token_asset_id, &meta.pot, &account, pot_tokens, false)?;
+            }
+
+            // mint swap
+            T::Swaps::new(meta.token_asset_id)?;
+            T::Swaps::mint(
+                &meta.pot,
+                meta.token_asset_id,
+                swap_currency_amount,
+                swap_currency_amount,
+                swap_token_amount,
+                false,
+            )?;
+
+            // create stake
+            T::Stake::start(meta.token_asset_id, stake_reward);
+
+            let minted_at = <frame_system::Pallet<T>>::block_number();
+            <Date<T>>::insert(nft_id, minted_at);
 
             Ok(().into())
         }

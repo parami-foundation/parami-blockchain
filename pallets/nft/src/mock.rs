@@ -267,6 +267,7 @@ impl parami_nft::Config for Test {
     type PendingLifetime = PendingLifetime;
     type StringLimit = StringLimit;
     type Swaps = Swap;
+    type Stake = ();
     type WeightInfo = ();
     type UnsignedPriority = ();
     type AssetIdManager = AssetManager;
