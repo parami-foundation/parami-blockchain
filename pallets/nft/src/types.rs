@@ -34,4 +34,5 @@ pub struct ImportTask<Did> {
 pub struct IcoMeta<Balance> {
     pub expected_currency: Balance,
     pub offered_tokens: Balance,
+    pub done: bool,
 }

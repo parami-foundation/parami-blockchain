@@ -710,6 +710,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        //FIXME: Weight
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
         pub fn mint_and_ico(
             origin: OriginFor<T>,
@@ -779,6 +780,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        //FIXME: Weight
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
         pub fn make_swap_and_open_stake(
             origin: OriginFor<T>,
@@ -789,6 +791,7 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let (did, account) = EnsureDid::<T>::ensure_origin(origin)?;
             let meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
+            let mut ico_meta = IcoMetaOf::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
             ensure!(meta.owner == did, Error::<T>::NotTokenOwner);
             let pot_tokens = T::Assets::balance(meta.token_asset_id, &meta.pot);
             let account_tokens = T::Assets::balance(meta.token_asset_id, &account);
@@ -819,10 +822,30 @@ pub mod pallet {
             )?;
 
             // create stake
-            T::Stake::start(meta.token_asset_id, stake_reward);
+            T::Stake::start(meta.token_asset_id, stake_reward)?;
 
             let minted_at = <frame_system::Pallet<T>>::block_number();
             <Date<T>>::insert(nft_id, minted_at);
+
+            ico_meta.done = true;
+            IcoMetaOf::<T>::insert(nft_id, ico_meta);
+
+            Ok(().into())
+        }
+
+        // FIXME: weight
+        #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
+        pub fn buy_ico_tokens(
+            origin: OriginFor<T>,
+            nft_id: NftOf<T>,
+            amount: BalanceOf<T>,
+        ) -> DispatchResultWithPostInfo {
+            let (did, account) = EnsureDid::<T>::ensure_origin(origin)?;
+            let meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
+            let ico_meta = IcoMetaOf::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
+            ensure!(!ico_meta.done, Error::<T>::Deadline);
+
+            Self::buy_tokens(nft_id, &did, amount, &account, &meta, &ico_meta)?;
 
             Ok(().into())
         }
@@ -1143,6 +1166,7 @@ impl<T: Config> Pallet<T> {
         let ico_meta = IcoMeta {
             expected_currency,
             offered_tokens,
+            done: false,
         };
 
         IcoMetaOf::<T>::insert(nft_id, ico_meta);
@@ -1152,11 +1176,11 @@ impl<T: Config> Pallet<T> {
 
     fn buy_tokens(
         nft_id: NftOf<T>,
-        did: DidOf<T>,
+        did: &DidOf<T>,
         amount: BalanceOf<T>,
-        dst_account: AccountOf<T>,
-        metadata: MetaOf<T>,
-        ico_meta: IcoMeta<BalanceOf<T>>,
+        dst_account: &AccountOf<T>,
+        metadata: &MetaOf<T>,
+        ico_meta: &IcoMeta<BalanceOf<T>>,
     ) -> Result<(), DispatchError> {
         let remained_tokens = T::Assets::balance(metadata.token_asset_id, &metadata.pot);
         ensure!(remained_tokens >= amount, Error::<T>::InsufficientToken);
