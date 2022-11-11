@@ -764,9 +764,6 @@ pub mod pallet {
             meta.minted = true;
             <Metadata<T>>::insert(nft_id, meta);
 
-            let minted_at = <frame_system::Pallet<T>>::block_number();
-            <Date<T>>::insert(nft_id, minted_at);
-
             // send event
             Self::deposit_event(Event::Minted(
                 did,
@@ -974,30 +971,55 @@ impl<T: Config> Pallet<T> {
 
         let mut passed_blocks = height - minted_block_number;
 
-        // calculate total tokens which is owned by did
-        let total = <Deposit<T>>::get(nft).ok_or(Error::<T>::NotExists)?;
-        let deposit = <Deposits<T>>::get(nft, &did).ok_or(Error::<T>::NotExists)?;
-        let initial = initial_tokens;
+        let (tokens, unlocked_tokens, claimable_tokens) =
+            if let Some(ico_meta) = IcoMetaOf::<T>::get(nft) {
+                let deposit = <Deposits<T>>::get(nft, &did).ok_or(Error::<T>::NotExists)?;
 
-        let total: U512 = Self::try_into(total)?;
-        let deposit: U512 = Self::try_into(deposit)?;
-        let initial: U512 = Self::try_into(initial)?;
+                let passed_blocks = passed_blocks.min(initial_minting_lockup_period);
 
-        let tokens = initial * deposit / total;
+                let deposit: U512 = Self::try_into(deposit)?;
+                let passed_blocks: U512 = Self::try_into(passed_blocks)?;
+                let lockup_period: U512 = Self::try_into(initial_minting_lockup_period)?;
+                let expected_currency: U512 = Self::try_into(ico_meta.expected_currency)?;
+                let offered_tokens: U512 = Self::try_into(ico_meta.offered_tokens)?;
 
-        // calculate unlocked tokens
+                let tokens = deposit * offered_tokens / expected_currency;
 
-        if passed_blocks > initial_minting_lockup_period {
-            passed_blocks = initial_minting_lockup_period;
-        }
-        let passed_blocks: U512 = Self::try_into(passed_blocks)?;
-        let lockup_period: U512 = Self::try_into(initial_minting_lockup_period)?;
+                let unlocked_tokens = tokens * passed_blocks / lockup_period;
+                let unlocked_tokens: BalanceOf<T> = Self::try_into(unlocked_tokens)?;
+                let claimable_tokens = unlocked_tokens - *claimed_tokens;
 
-        let unlocked_tokens = tokens * passed_blocks / lockup_period;
-        let unlocked_tokens: BalanceOf<T> = Self::try_into(unlocked_tokens)?;
+                (tokens, unlocked_tokens, claimable_tokens)
+            } else {
+                // TODO: should remove later.
 
-        // calculate claimable_tokens
-        let claimable_tokens = unlocked_tokens - *claimed_tokens;
+                // calculate total tokens which is owned by did
+                let total = <Deposit<T>>::get(nft).ok_or(Error::<T>::NotExists)?;
+                let deposit = <Deposits<T>>::get(nft, &did).ok_or(Error::<T>::NotExists)?;
+                let initial = initial_tokens;
+
+                let total: U512 = Self::try_into(total)?;
+                let deposit: U512 = Self::try_into(deposit)?;
+                let initial: U512 = Self::try_into(initial)?;
+
+                let tokens = initial * deposit / total;
+
+                // calculate unlocked tokens
+
+                if passed_blocks > initial_minting_lockup_period {
+                    passed_blocks = initial_minting_lockup_period;
+                }
+                let passed_blocks: U512 = Self::try_into(passed_blocks)?;
+                let lockup_period: U512 = Self::try_into(initial_minting_lockup_period)?;
+
+                let unlocked_tokens = tokens * passed_blocks / lockup_period;
+                let unlocked_tokens: BalanceOf<T> = Self::try_into(unlocked_tokens)?;
+
+                // calculate claimable_tokens
+                let claimable_tokens = unlocked_tokens - *claimed_tokens;
+
+                (tokens, unlocked_tokens, claimable_tokens)
+            };
 
         Ok((Self::try_into(tokens)?, unlocked_tokens, claimable_tokens))
     }
@@ -1078,7 +1100,9 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn buy_coins(
+    fn buy_tokens(
+        nft_id: NftOf<T>,
+        did: DidOf<T>,
         amount: BalanceOf<T>,
         dst_account: AccountOf<T>,
         metadata: MetaOf<T>,
@@ -1093,19 +1117,20 @@ impl<T: Config> Pallet<T> {
             Error::<T>::InsufficientBalance
         );
 
-        T::Assets::transfer(
-            metadata.token_asset_id,
-            &metadata.pot,
-            &dst_account,
-            amount,
-            false,
-        )?;
         T::Currency::transfer(
             &dst_account,
             &metadata.pot,
             required_balance,
             ExistenceRequirement::KeepAlive,
         )?;
+
+        Deposits::<T>::mutate(nft_id, did, |maybe| {
+            if let Some(deposit) = maybe {
+                deposit.saturating_accrue(required_balance);
+            } else {
+                *maybe = Some(required_balance);
+            }
+        });
 
         Ok(())
     }
