@@ -1589,7 +1589,6 @@ impl parami_nft::Config for Runtime {
     type PalletId = NftPalletId;
     type PendingLifetime = NftPendingLifetime;
     type StringLimit = StringLimit;
-    type Stake = Stake;
     type Swaps = Swap;
     type WeightInfo = parami_nft::weights::SubstrateWeight<Runtime>;
     type UnsignedPriority = UnsignedPriority;

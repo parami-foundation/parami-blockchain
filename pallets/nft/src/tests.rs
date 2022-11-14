@@ -776,3 +776,12 @@ fn should_back_to() {
         assert_eq!(deposit, Some(150));
     });
 }
+
+#[test]
+fn should_mint_asset_and_ico() {
+    new_test_ext().execute_with(|| {
+        let nft = Nft::preferred(DID_ALICE).unwrap();
+
+        let deposit = <Deposit<Test>>::get(nft);
+    });
+}

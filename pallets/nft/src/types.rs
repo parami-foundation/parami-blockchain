@@ -31,8 +31,9 @@ pub struct ImportTask<Did> {
 }
 
 #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, Default, TypeInfo)]
-pub struct IcoMeta<Balance> {
+pub struct IcoMeta<Balance, Account> {
     pub expected_currency: Balance,
     pub offered_tokens: Balance,
     pub done: bool,
+    pub pot: Account,
 }

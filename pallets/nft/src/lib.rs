@@ -65,6 +65,7 @@ type HeightOf<T> = <T as frame_system::Config>::BlockNumber;
 type MetaOf<T> = types::Metadata<DidOf<T>, AccountOf<T>, NftOf<T>, AssetOf<T>>;
 type NftOf<T> = <T as Config>::AssetId;
 type TaskOf<T> = Task<ImportTask<DidOf<T>>, HeightOf<T>>;
+type IcoMeta<T> = types::IcoMeta<BalanceOf<T>, AccountOf<T>>;
 
 const STORAGE_VERSION: StorageVersion = StorageVersion::new(3);
 
@@ -73,7 +74,6 @@ pub mod pallet {
     use super::*;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
-    use parami_traits::Stakes;
 
     #[pallet::config]
     pub trait Config:
@@ -148,8 +148,6 @@ pub mod pallet {
             QuoteBalance = BalanceOf<Self>,
             TokenBalance = BalanceOf<Self>,
         >;
-
-        type Stake: Stakes<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>;
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
@@ -232,8 +230,7 @@ pub mod pallet {
     pub(super) type Date<T: Config> = StorageMap<_, Twox64Concat, NftOf<T>, HeightOf<T>>;
 
     #[pallet::storage]
-    pub(super) type IcoMetaOf<T: Config> =
-        StorageMap<_, Twox64Concat, NftOf<T>, IcoMeta<BalanceOf<T>>>;
+    pub(super) type IcoMetaOf<T: Config> = StorageMap<_, Twox64Concat, NftOf<T>, IcoMeta<T>>;
 
     #[pallet::type_value]
     pub(crate) fn DefaultId<T: Config>() -> NftOf<T> {
@@ -630,7 +627,7 @@ pub mod pallet {
                 Error::<T>::Minted
             );
 
-            let pot = T::PalletId::get().into_sub_account_truncating(&id);
+            let pot = Self::generate_pot(&id);
             let free_balance = T::Currency::free_balance(&pot);
             ensure!(free_balance == 0u32.into(), Error::<T>::InsufficientBalance);
 
@@ -717,7 +714,7 @@ pub mod pallet {
             nft_id: NftOf<T>,
             name: Vec<u8>,
             symbol: Vec<u8>,
-            minted_tokens: BalanceOf<T>,
+            minting_tokens: BalanceOf<T>,
             expected_currency: BalanceOf<T>,
             offered_tokens: BalanceOf<T>,
         ) -> DispatchResultWithPostInfo {
@@ -726,7 +723,7 @@ pub mod pallet {
 
             ensure!(did == meta.owner, Error::<T>::NotTokenOwner);
             ensure!(
-                offered_tokens <= minted_tokens,
+                offered_tokens <= minting_tokens,
                 Error::<T>::InsufficientToken
             );
             ensure!(!meta.minted, Error::<T>::Minted);
@@ -752,14 +749,14 @@ pub mod pallet {
             T::Nft::mint_into(&meta.class_id, &nft_id, &meta.pot)?;
 
             // mint funds
-            Self::mint_tokens(minted_tokens, &meta, &account)?;
+            Self::mint_tokens(minting_tokens, &meta, &account)?;
 
             // start initial coin offering
             Self::start_initial_coin_offering(
                 nft_id,
                 expected_currency,
                 offered_tokens,
-                &meta,
+                meta.token_asset_id,
                 &account,
             )?;
 
@@ -774,7 +771,7 @@ pub mod pallet {
                 nft_id,
                 name,
                 symbol,
-                minted_tokens,
+                minting_tokens,
             ));
 
             Ok(().into())
@@ -782,21 +779,20 @@ pub mod pallet {
 
         //FIXME: Weight
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
-        pub fn make_swap_and_open_stake(
+        pub fn ido(
             origin: OriginFor<T>,
             nft_id: NftOf<T>,
             swap_token_amount: BalanceOf<T>,
             swap_currency_amount: BalanceOf<T>,
-            stake_reward: BalanceOf<T>,
         ) -> DispatchResultWithPostInfo {
             let (did, account) = EnsureDid::<T>::ensure_origin(origin)?;
             let meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
-            let mut ico_meta = IcoMetaOf::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
+            let ico_meta = IcoMetaOf::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
             ensure!(meta.owner == did, Error::<T>::NotTokenOwner);
             let pot_tokens = T::Assets::balance(meta.token_asset_id, &meta.pot);
             let account_tokens = T::Assets::balance(meta.token_asset_id, &account);
             ensure!(
-                pot_tokens + account_tokens >= swap_token_amount + stake_reward,
+                pot_tokens + account_tokens >= swap_token_amount,
                 Error::<T>::InsufficientToken
             );
             let account_currency = T::Currency::free_balance(&account);
@@ -804,11 +800,6 @@ pub mod pallet {
                 account_currency >= swap_currency_amount,
                 Error::<T>::InsufficientBalance
             );
-
-            // refund ico pot balance
-            if pot_tokens > 0u32.into() {
-                T::Assets::transfer(meta.token_asset_id, &meta.pot, &account, pot_tokens, false)?;
-            }
 
             // mint swap
             T::Swaps::new(meta.token_asset_id)?;
@@ -821,21 +812,14 @@ pub mod pallet {
                 false,
             )?;
 
-            // create stake
-            T::Stake::start(meta.token_asset_id, stake_reward)?;
-
-            let minted_at = <frame_system::Pallet<T>>::block_number();
-            <Date<T>>::insert(nft_id, minted_at);
-
-            ico_meta.done = true;
-            IcoMetaOf::<T>::insert(nft_id, ico_meta);
+            Self::end_ico(nft_id, ico_meta, meta.token_asset_id, pot_tokens, account)?;
 
             Ok(().into())
         }
 
         // FIXME: weight
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
-        pub fn buy_ico_tokens(
+        pub fn participate_ico(
             origin: OriginFor<T>,
             nft_id: NftOf<T>,
             amount: BalanceOf<T>,
@@ -845,7 +829,14 @@ pub mod pallet {
             let ico_meta = IcoMetaOf::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
             ensure!(!ico_meta.done, Error::<T>::Deadline);
 
-            Self::buy_tokens(nft_id, &did, amount, &account, &meta, &ico_meta)?;
+            Self::buy_tokens_in_ico(
+                nft_id,
+                &did,
+                amount,
+                &account,
+                &meta.token_asset_id,
+                &ico_meta,
+            )?;
 
             Ok(().into())
         }
@@ -910,7 +901,7 @@ pub mod pallet {
                     panic!("NFT ID must be less than next_instance_id");
                 }
 
-                let pot: AccountOf<T> = T::PalletId::get().into_sub_account_truncating(id);
+                let pot: AccountOf<T> = Pallet::<T>::generate_pot(&id);
 
                 <Metadata<T>>::insert(
                     id,
@@ -990,7 +981,7 @@ impl<T: Config> Pallet<T> {
     fn create(owner: DidOf<T>) -> Result<NftOf<T>, DispatchError> {
         let id =
             <T as crate::Config>::AssetIdManager::next_id().map_err(|_e| Error::<T>::Overflow)?;
-        let pot = T::PalletId::get().into_sub_account_truncating(&id);
+        let pot = Self::generate_pot(&id);
 
         ensure!(!<Metadata<T>>::contains_key(id), Error::<T>::Exists);
 
@@ -1122,10 +1113,7 @@ impl<T: Config> Nfts<AccountOf<T>> for Pallet<T> {
         <Metadata<T>>::get(nft_id).map(|meta| meta.pot)
     }
 }
-
 use parami_traits::transferable::Transferable;
-
-use crate::types::IcoMeta;
 
 impl<T: Config> Transferable<AccountOf<T>> for Pallet<T> {
     fn transfer_all(src: &AccountOf<T>, dest: &AccountOf<T>) -> Result<(), DispatchError> {
@@ -1154,19 +1142,20 @@ impl<T: Config> Pallet<T> {
         nft_id: NftOf<T>,
         expected_currency: BalanceOf<T>,
         offered_tokens: BalanceOf<T>,
-        metadata: &MetaOf<T>,
+        asset_id: AssetOf<T>,
         owner_account: &AccountOf<T>,
     ) -> Result<(), DispatchError> {
-        let asset_id = metadata.token_asset_id;
         let balance = T::Assets::balance(asset_id, owner_account);
         ensure!(balance >= offered_tokens, Error::<T>::InsufficientToken);
 
-        T::Assets::transfer(asset_id, owner_account, &metadata.pot, balance, false)?;
+        let pot = Self::generate_ico_pot(&nft_id);
+        T::Assets::transfer(asset_id, owner_account, &pot, balance, false)?;
 
-        let ico_meta = IcoMeta {
+        let ico_meta = IcoMeta::<T> {
             expected_currency,
             offered_tokens,
             done: false,
+            pot,
         };
 
         IcoMetaOf::<T>::insert(nft_id, ico_meta);
@@ -1174,18 +1163,19 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn buy_tokens(
+    fn buy_tokens_in_ico(
         nft_id: NftOf<T>,
         did: &DidOf<T>,
         amount: BalanceOf<T>,
         dst_account: &AccountOf<T>,
-        metadata: &MetaOf<T>,
-        ico_meta: &IcoMeta<BalanceOf<T>>,
+        asset_id: &AssetOf<T>,
+        ico_meta: &IcoMeta<T>,
     ) -> Result<(), DispatchError> {
-        let remained_tokens = T::Assets::balance(metadata.token_asset_id, &metadata.pot);
+        let pot = &ico_meta.pot;
+        let remained_tokens = T::Assets::balance(*asset_id, pot);
         ensure!(remained_tokens >= amount, Error::<T>::InsufficientToken);
         let account_balance = T::Currency::free_balance(&dst_account);
-        let required_balance = Self::calulated_required_currency(amount, &ico_meta)?;
+        let required_balance = Self::calculate_required_currency(amount, &ico_meta)?;
         ensure!(
             account_balance >= required_balance,
             Error::<T>::InsufficientBalance
@@ -1193,10 +1183,18 @@ impl<T: Config> Pallet<T> {
 
         T::Currency::transfer(
             &dst_account,
-            &metadata.pot,
+            pot,
             required_balance,
             ExistenceRequirement::KeepAlive,
         )?;
+
+        Deposit::<T>::mutate(nft_id, |maybe| {
+            if let Some(deposit) = maybe {
+                deposit.saturating_accrue(required_balance);
+            } else {
+                *maybe = Some(required_balance);
+            }
+        });
 
         Deposits::<T>::mutate(nft_id, did, |maybe| {
             if let Some(deposit) = maybe {
@@ -1209,9 +1207,9 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn calulated_required_currency(
+    fn calculate_required_currency(
         amount: BalanceOf<T>,
-        ico_meta: &IcoMeta<BalanceOf<T>>,
+        ico_meta: &IcoMeta<T>,
     ) -> Result<BalanceOf<T>, DispatchError> {
         let amount: U512 = Self::try_into(amount)?;
         let offered_tokens: U512 = Self::try_into(ico_meta.offered_tokens)?;
@@ -1220,5 +1218,57 @@ impl<T: Config> Pallet<T> {
         let required_currency = amount * offered_tokens / expected_currency;
 
         Ok(Self::try_into(required_currency)?)
+    }
+
+    fn calculate_required_token(
+        amount: BalanceOf<T>,
+        ico_meta: &IcoMeta<T>,
+    ) -> Result<BalanceOf<T>, DispatchError> {
+        let amount: U512 = Self::try_into(amount)?;
+        let offered_tokens: U512 = Self::try_into(ico_meta.offered_tokens)?;
+        let expected_currency: U512 = Self::try_into(ico_meta.expected_currency)?;
+
+        let required_currency = amount * expected_currency / offered_tokens;
+
+        Ok(Self::try_into(required_currency)?)
+    }
+
+    fn end_ico(
+        nft_id: NftOf<T>,
+        mut ico_meta: IcoMeta<T>,
+        asset_id: AssetOf<T>,
+        pot_tokens: BalanceOf<T>,
+        account: AccountOf<T>,
+    ) -> Result<(), DispatchError> {
+        let deposit = Deposit::<T>::get(nft_id).unwrap_or(0u32.into());
+        let reward_tokens = Self::calculate_required_token(deposit, &ico_meta)?;
+
+        // refund ico pot balance
+        if pot_tokens > reward_tokens {
+            T::Assets::transfer(
+                asset_id,
+                &ico_meta.pot,
+                &account,
+                pot_tokens - reward_tokens,
+                false,
+            )?;
+        }
+
+        let minted_at = <frame_system::Pallet<T>>::block_number();
+        <Date<T>>::insert(nft_id, minted_at);
+        ico_meta.done = true;
+        IcoMetaOf::<T>::insert(nft_id, ico_meta);
+        Ok(())
+    }
+
+    fn generate_pot(nft_id: &NftOf<T>) -> AccountOf<T> {
+        return T::PalletId::get().into_sub_account_truncating(&nft_id);
+    }
+
+    fn generate_ico_pot(nft_id: &NftOf<T>) -> AccountOf<T> {
+        use sp_core::Encode;
+        let mut pot_seed = b"ico".to_vec();
+        pot_seed.append(&mut nft_id.encode());
+        return T::PalletId::get().into_sub_account_truncating(&pot_seed);
     }
 }
