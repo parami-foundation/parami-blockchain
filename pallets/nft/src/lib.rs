@@ -749,7 +749,7 @@ pub mod pallet {
             T::Nft::mint_into(&meta.class_id, &nft_id, &meta.pot)?;
 
             // mint funds
-            Self::mint_tokens(minting_tokens, &meta, &account)?;
+            Self::mint_tokens(minting_tokens, &meta, &account, &name, &symbol)?;
 
             // start initial coin offering
             Self::start_initial_coin_offering(
@@ -1131,8 +1131,12 @@ impl<T: Config> Pallet<T> {
         amount: BalanceOf<T>,
         metadata: &MetaOf<T>,
         owner_account: &AccountOf<T>,
+        name: &Vec<u8>,
+        symbol: &Vec<u8>,
     ) -> Result<(), DispatchError> {
         let asset_id = metadata.token_asset_id;
+        T::Assets::create(asset_id, owner_account.clone(), true, One::one())?;
+        T::Assets::set(asset_id, owner_account, name.clone(), symbol.clone(), 18)?;
         T::Assets::mint_into(asset_id, owner_account, amount)?;
 
         Ok(())
@@ -1149,7 +1153,7 @@ impl<T: Config> Pallet<T> {
         ensure!(balance >= offered_tokens, Error::<T>::InsufficientToken);
 
         let pot = Self::generate_ico_pot(&nft_id);
-        T::Assets::transfer(asset_id, owner_account, &pot, balance, false)?;
+        T::Assets::transfer(asset_id, owner_account, &pot, offered_tokens, false)?;
 
         let ico_meta = IcoMeta::<T> {
             expected_currency,
@@ -1241,15 +1245,19 @@ impl<T: Config> Pallet<T> {
         account: AccountOf<T>,
     ) -> Result<(), DispatchError> {
         let deposit = Deposit::<T>::get(nft_id).unwrap_or(0u32.into());
-        let reward_tokens = Self::calculate_required_token(deposit, &ico_meta)?;
+        let mature_ico_quota = Self::calculate_required_token(deposit, &ico_meta)?;
+        ensure!(
+            pot_tokens >= mature_ico_quota,
+            Error::<T>::InsufficientToken
+        );
 
         // refund ico pot balance
-        if pot_tokens > reward_tokens {
+        if pot_tokens > mature_ico_quota {
             T::Assets::transfer(
                 asset_id,
                 &ico_meta.pot,
                 &account,
-                pot_tokens - reward_tokens,
+                pot_tokens - mature_ico_quota,
                 false,
             )?;
         }
