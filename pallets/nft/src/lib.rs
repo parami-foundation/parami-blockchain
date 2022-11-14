@@ -789,7 +789,7 @@ pub mod pallet {
             let meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
             let ico_meta = IcoMetaOf::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
             ensure!(meta.owner == did, Error::<T>::NotTokenOwner);
-            let pot_tokens = T::Assets::balance(meta.token_asset_id, &meta.pot);
+            let pot_tokens = T::Assets::balance(meta.token_asset_id, &ico_meta.pot);
             let account_tokens = T::Assets::balance(meta.token_asset_id, &account);
             ensure!(
                 pot_tokens + account_tokens >= swap_token_amount,
@@ -804,7 +804,7 @@ pub mod pallet {
             // mint swap
             T::Swaps::new(meta.token_asset_id)?;
             T::Swaps::mint(
-                &meta.pot,
+                &account,
                 meta.token_asset_id,
                 swap_currency_amount,
                 swap_currency_amount,
@@ -822,21 +822,14 @@ pub mod pallet {
         pub fn participate_ico(
             origin: OriginFor<T>,
             nft_id: NftOf<T>,
-            amount: BalanceOf<T>,
+            token_amount: BalanceOf<T>,
         ) -> DispatchResultWithPostInfo {
             let (did, account) = EnsureDid::<T>::ensure_origin(origin)?;
             let meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
             let ico_meta = IcoMetaOf::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
             ensure!(!ico_meta.done, Error::<T>::Deadline);
 
-            Self::buy_tokens_in_ico(
-                nft_id,
-                &did,
-                amount,
-                &account,
-                &meta.token_asset_id,
-                &ico_meta,
-            )?;
+            Self::buy_tokens_in_ico(nft_id, &did, token_amount, &account, &meta, &ico_meta)?;
 
             Ok(().into())
         }
@@ -1170,24 +1163,34 @@ impl<T: Config> Pallet<T> {
     fn buy_tokens_in_ico(
         nft_id: NftOf<T>,
         did: &DidOf<T>,
-        amount: BalanceOf<T>,
+        token_amount: BalanceOf<T>,
         dst_account: &AccountOf<T>,
-        asset_id: &AssetOf<T>,
+        meta: &MetaOf<T>,
         ico_meta: &IcoMeta<T>,
     ) -> Result<(), DispatchError> {
         let pot = &ico_meta.pot;
-        let remained_tokens = T::Assets::balance(*asset_id, pot);
-        ensure!(remained_tokens >= amount, Error::<T>::InsufficientToken);
+        let remained_tokens = T::Assets::balance(meta.token_asset_id, pot);
+        ensure!(
+            remained_tokens >= token_amount,
+            Error::<T>::InsufficientToken
+        );
         let account_balance = T::Currency::free_balance(&dst_account);
-        let required_balance = Self::calculate_required_currency(amount, &ico_meta)?;
+        let required_balance = Self::calculate_required_currency(token_amount, &ico_meta)?;
         ensure!(
             account_balance >= required_balance,
             Error::<T>::InsufficientBalance
         );
+        ensure!(
+            Deposit::<T>::get(nft_id).unwrap_or(0u32.into()) + required_balance
+                <= ico_meta.expected_currency,
+            Error::<T>::InsufficientBalance
+        );
+
+        let owner_account = parami_did::Pallet::<T>::lookup_did(meta.owner).unwrap();
 
         T::Currency::transfer(
             &dst_account,
-            pot,
+            &owner_account,
             required_balance,
             ExistenceRequirement::KeepAlive,
         )?;
@@ -1212,29 +1215,29 @@ impl<T: Config> Pallet<T> {
     }
 
     fn calculate_required_currency(
-        amount: BalanceOf<T>,
+        token_amount: BalanceOf<T>,
         ico_meta: &IcoMeta<T>,
     ) -> Result<BalanceOf<T>, DispatchError> {
-        let amount: U512 = Self::try_into(amount)?;
-        let offered_tokens: U512 = Self::try_into(ico_meta.offered_tokens)?;
-        let expected_currency: U512 = Self::try_into(ico_meta.expected_currency)?;
-
-        let required_currency = amount * offered_tokens / expected_currency;
-
-        Ok(Self::try_into(required_currency)?)
-    }
-
-    fn calculate_required_token(
-        amount: BalanceOf<T>,
-        ico_meta: &IcoMeta<T>,
-    ) -> Result<BalanceOf<T>, DispatchError> {
-        let amount: U512 = Self::try_into(amount)?;
+        let amount: U512 = Self::try_into(token_amount)?;
         let offered_tokens: U512 = Self::try_into(ico_meta.offered_tokens)?;
         let expected_currency: U512 = Self::try_into(ico_meta.expected_currency)?;
 
         let required_currency = amount * expected_currency / offered_tokens;
 
         Ok(Self::try_into(required_currency)?)
+    }
+
+    fn calculate_required_token(
+        currency_amount: BalanceOf<T>,
+        ico_meta: &IcoMeta<T>,
+    ) -> Result<BalanceOf<T>, DispatchError> {
+        let amount: U512 = Self::try_into(currency_amount)?;
+        let offered_tokens: U512 = Self::try_into(ico_meta.offered_tokens)?;
+        let expected_currency: U512 = Self::try_into(ico_meta.expected_currency)?;
+
+        let required_token = amount * offered_tokens / expected_currency;
+
+        Ok(Self::try_into(required_token)?)
     }
 
     fn end_ico(
@@ -1246,6 +1249,7 @@ impl<T: Config> Pallet<T> {
     ) -> Result<(), DispatchError> {
         let deposit = Deposit::<T>::get(nft_id).unwrap_or(0u32.into());
         let mature_ico_quota = Self::calculate_required_token(deposit, &ico_meta)?;
+        println!("mature_ico_quote: {:?}, {:?}", pot_tokens, mature_ico_quota);
         ensure!(
             pot_tokens >= mature_ico_quota,
             Error::<T>::InsufficientToken

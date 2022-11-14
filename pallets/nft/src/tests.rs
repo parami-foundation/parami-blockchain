@@ -1,6 +1,6 @@
 use crate::{
-    mock::*, ClaimedFragmentAmount, Deposit, Deposits, Error, External, Metadata, Ported, Porting,
-    Preferred,
+    mock::*, ClaimedFragmentAmount, Date, Deposit, Deposits, Error, External, IcoMetaOf, Metadata,
+    Ported, Porting, Preferred,
 };
 
 use codec::Decode;
@@ -779,9 +779,86 @@ fn should_back_to() {
 
 #[test]
 fn should_mint_asset_and_ico() {
+    use frame_support::traits::tokens::fungibles::Inspect;
     new_test_ext().execute_with(|| {
         let nft = Nft::preferred(DID_ALICE).unwrap();
 
-        let deposit = <Deposit<Test>>::get(nft);
+        assert_eq!(Assets::balance(nft, &ALICE), 0);
+        let result = Nft::mint_and_ico(
+            Origin::signed(ALICE),
+            nft,
+            b"Test Token".to_vec(),
+            b"TT".to_vec(),
+            200,
+            100,
+            50,
+        );
+        assert_ok!(result);
+        assert_eq!(Assets::total_issuance(nft), 200);
+        assert_eq!(Assets::balance(nft, ALICE), 150);
+
+        let meta = IcoMetaOf::<Test>::get(nft).unwrap();
+
+        assert_eq!(meta.done, false);
+        assert_eq!(meta.expected_currency, 100);
+        assert_eq!(meta.offered_tokens, 50);
+        assert_eq!(Assets::balance(nft, meta.pot), 50);
+    });
+}
+
+#[test]
+fn should_participate_ico() {
+    new_test_ext().execute_with(|| {
+        let nft = Nft::preferred(DID_ALICE).unwrap();
+
+        let result = Nft::mint_and_ico(
+            Origin::signed(ALICE),
+            nft,
+            b"Test Token".to_vec(),
+            b"TT".to_vec(),
+            200,
+            100,
+            50,
+        );
+        assert_ok!(result);
+
+        let meta = IcoMetaOf::<Test>::get(nft).unwrap();
+
+        assert_eq!(Assets::balance(nft, meta.pot), 50);
+
+        assert_eq!(Balances::free_balance(ALICE), 3000000 * DOLLARS);
+        assert_eq!(Balances::free_balance(BOB), 3000000 * DOLLARS);
+        assert_ok!(Nft::participate_ico(Origin::signed(BOB), nft, 50));
+        assert_eq!(Balances::free_balance(BOB), 3000000 * DOLLARS - 100);
+        assert_eq!(Balances::free_balance(ALICE), 3000000 * DOLLARS + 100);
+
+        assert_eq!(Assets::balance(nft, meta.pot), 50);
+    });
+}
+
+#[test]
+fn should_ido() {
+    new_test_ext().execute_with(|| {
+        let nft = Nft::preferred(DID_ALICE).unwrap();
+
+        let result = Nft::mint_and_ico(
+            Origin::signed(ALICE),
+            nft,
+            b"Test Token".to_vec(),
+            b"TT".to_vec(),
+            200,
+            100,
+            50,
+        );
+        assert_ok!(result);
+
+        assert_ok!(Nft::participate_ico(Origin::signed(BOB), nft, 50));
+        assert_ok!(Nft::ido(Origin::signed(ALICE), nft, 50, 100));
+
+        let meta = IcoMetaOf::<Test>::get(nft).unwrap();
+        let block_num = Date::<Test>::get(nft).unwrap();
+        assert_eq!(meta.done, true);
+        assert_eq!(Assets::balance(nft, meta.pot), 50);
+        assert_eq!(block_num, 0);
     });
 }
