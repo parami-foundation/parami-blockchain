@@ -792,7 +792,7 @@ pub mod pallet {
             let pot_tokens = T::Assets::balance(meta.token_asset_id, &ico_meta.pot);
             let account_tokens = T::Assets::balance(meta.token_asset_id, &account);
             ensure!(
-                pot_tokens + account_tokens >= swap_token_amount,
+                account_tokens >= swap_token_amount,
                 Error::<T>::InsufficientToken
             );
             let account_currency = T::Currency::free_balance(&account);
@@ -812,7 +812,7 @@ pub mod pallet {
                 false,
             )?;
 
-            Self::end_ico(nft_id, ico_meta, meta.token_asset_id, pot_tokens, account)?;
+            Self::end_ico(nft_id, ico_meta, meta, pot_tokens, account)?;
 
             Ok(().into())
         }
@@ -1243,22 +1243,31 @@ impl<T: Config> Pallet<T> {
     fn end_ico(
         nft_id: NftOf<T>,
         mut ico_meta: IcoMeta<T>,
-        asset_id: AssetOf<T>,
+        mut meta: MetaOf<T>,
         pot_tokens: BalanceOf<T>,
         account: AccountOf<T>,
     ) -> Result<(), DispatchError> {
         let deposit = Deposit::<T>::get(nft_id).unwrap_or(0u32.into());
+
         let mature_ico_quota = Self::calculate_required_token(deposit, &ico_meta)?;
-        println!("mature_ico_quote: {:?}, {:?}", pot_tokens, mature_ico_quota);
         ensure!(
             pot_tokens >= mature_ico_quota,
             Error::<T>::InsufficientToken
         );
 
+        // tranfer tokens to meta pot
+        T::Assets::transfer(
+            meta.token_asset_id,
+            &ico_meta.pot,
+            &meta.pot,
+            mature_ico_quota,
+            false,
+        )?;
+
         // refund ico pot balance
         if pot_tokens > mature_ico_quota {
             T::Assets::transfer(
-                asset_id,
+                meta.token_asset_id,
                 &ico_meta.pot,
                 &account,
                 pot_tokens - mature_ico_quota,
@@ -1266,8 +1275,8 @@ impl<T: Config> Pallet<T> {
             )?;
         }
 
-        let minted_at = <frame_system::Pallet<T>>::block_number();
-        <Date<T>>::insert(nft_id, minted_at);
+        let ico_ended_at = <frame_system::Pallet<T>>::block_number();
+        <Date<T>>::insert(nft_id, ico_ended_at);
         ico_meta.done = true;
         IcoMetaOf::<T>::insert(nft_id, ico_meta);
         Ok(())
