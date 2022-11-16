@@ -709,23 +709,17 @@ pub mod pallet {
 
         //FIXME: Weight
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
-        pub fn mint_and_ico(
+        pub fn mint_nft_power(
             origin: OriginFor<T>,
             nft_id: NftOf<T>,
             name: Vec<u8>,
             symbol: Vec<u8>,
             minting_tokens: BalanceOf<T>,
-            expected_currency: BalanceOf<T>,
-            offered_tokens: BalanceOf<T>,
         ) -> DispatchResultWithPostInfo {
             let (did, account) = EnsureDid::<T>::ensure_origin(origin)?;
             let mut meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
 
             ensure!(did == meta.owner, Error::<T>::NotTokenOwner);
-            ensure!(
-                offered_tokens <= minting_tokens,
-                Error::<T>::InsufficientToken
-            );
             ensure!(!meta.minted, Error::<T>::Minted);
 
             let limit = T::StringLimit::get() as usize - 4;
@@ -751,15 +745,6 @@ pub mod pallet {
             // mint funds
             Self::mint_tokens(minting_tokens, &meta, &account, &name, &symbol)?;
 
-            // start initial coin offering
-            Self::start_initial_coin_offering(
-                nft_id,
-                expected_currency,
-                offered_tokens,
-                meta.token_asset_id,
-                &account,
-            )?;
-
             // update metadata
             meta.minted = true;
             <Metadata<T>>::insert(nft_id, meta);
@@ -777,42 +762,44 @@ pub mod pallet {
             Ok(().into())
         }
 
-        //FIXME: Weight
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
-        pub fn ido(
+        pub fn start_ico(
             origin: OriginFor<T>,
             nft_id: NftOf<T>,
-            swap_token_amount: BalanceOf<T>,
-            swap_currency_amount: BalanceOf<T>,
+            expected_currency: BalanceOf<T>,
+            offered_tokens: BalanceOf<T>,
         ) -> DispatchResultWithPostInfo {
             let (did, account) = EnsureDid::<T>::ensure_origin(origin)?;
             let meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
-            let ico_meta = IcoMetaOf::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
-            ensure!(meta.owner == did, Error::<T>::NotTokenOwner);
-            let pot_tokens = T::Assets::balance(meta.token_asset_id, &ico_meta.pot);
-            let account_tokens = T::Assets::balance(meta.token_asset_id, &account);
-            ensure!(
-                account_tokens >= swap_token_amount,
-                Error::<T>::InsufficientToken
-            );
-            let account_currency = T::Currency::free_balance(&account);
-            ensure!(
-                account_currency >= swap_currency_amount,
-                Error::<T>::InsufficientBalance
-            );
+            ensure!(meta.minted, Error::<T>::NotExists);
+            ensure!(did == meta.owner, Error::<T>::NotTokenOwner);
+            ensure!(IcoMetaOf::<T>::get(nft_id).is_none(), Error::<T>::Deadline);
 
-            // mint swap
-            T::Swaps::new(meta.token_asset_id)?;
-            T::Swaps::mint(
-                &account,
+            let balance = T::Assets::balance(meta.token_asset_id, &account);
+
+            ensure!(offered_tokens <= balance, Error::<T>::InsufficientToken);
+            // start initial coin offering
+            Self::start_initial_coin_offering(
+                nft_id,
+                expected_currency,
+                offered_tokens,
                 meta.token_asset_id,
-                swap_currency_amount,
-                swap_currency_amount,
-                swap_token_amount,
-                false,
+                &account,
             )?;
 
-            Self::end_ico(nft_id, ico_meta, meta, pot_tokens, account)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
+        pub fn end_ico(origin: OriginFor<T>, nft_id: NftOf<T>) -> DispatchResultWithPostInfo {
+            let (did, account) = EnsureDid::<T>::ensure_origin(origin)?;
+            let meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
+            ensure!(did == meta.owner, Error::<T>::NotTokenOwner);
+            ensure!(meta.minted, Error::<T>::NotExists);
+            let ico_meta = IcoMetaOf::<T>::get(nft_id).ok_or(Error::<T>::NotExists)?;
+            let pot_tokens = T::Assets::balance(meta.token_asset_id, &ico_meta.pot);
+
+            Self::end_ico_inner(nft_id, ico_meta, meta, pot_tokens, account)?;
 
             Ok(().into())
         }
@@ -1240,7 +1227,7 @@ impl<T: Config> Pallet<T> {
         Ok(Self::try_into(required_token)?)
     }
 
-    fn end_ico(
+    fn end_ico_inner(
         nft_id: NftOf<T>,
         mut ico_meta: IcoMeta<T>,
         mut meta: MetaOf<T>,
