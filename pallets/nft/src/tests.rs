@@ -1008,7 +1008,7 @@ fn should_failed_if_ico_with_wrong_params() {
 }
 
 #[test]
-fn should_failed_to_participate_ico_if_not_in_ico() {
+fn should_failed_to_participate_ico_if_with_wrong_params() {
     new_test_ext().execute_with(|| {
         let nft = Nft::preferred(DID_ALICE).unwrap();
         assert_noop!(
