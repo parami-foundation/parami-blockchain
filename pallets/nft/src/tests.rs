@@ -881,7 +881,7 @@ fn should_end_ico() {
 fn should_generate_unique_pot_for_ico_meta() {
     new_test_ext().execute_with(|| {
         let nft = Nft::preferred(DID_ALICE).unwrap();
-        let meta_pot = Nft::generate_pot(&nft);
+        let meta_pot = Nft::generate_claim_pot(&nft);
         let ico_pot_1 = Nft::generate_ico_pot(&nft);
         let ico_pot_2 = Nft::generate_ico_pot(&(nft + 1));
 
@@ -1025,6 +1025,10 @@ fn should_failed_to_participate_ico_if_not_in_ico() {
         ));
 
         assert_ok!(Nft::start_ico(Origin::signed(ALICE), nft, 50, 50));
+        assert_noop!(
+            Nft::participate_ico(Origin::signed(ALICE), nft, 150),
+            Error::<Test>::InsufficientToken
+        );
         assert_ok!(Nft::end_ico(Origin::signed(ALICE), nft));
 
         assert_noop!(
