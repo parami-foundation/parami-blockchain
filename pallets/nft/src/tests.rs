@@ -1,6 +1,6 @@
 use crate::{
-    mock::*, ClaimedFragmentAmount, Date, Deposit, Deposits, Error, External, IcoMeta, IcoMetaOf,
-    Metadata, Ported, Porting, Preferred,
+    mock::*, ClaimStartAt, ClaimedFragmentAmount, Deposit, Deposits, Error, External, IcoMeta,
+    IcoMetaOf, Metadata, Ported, Porting, Preferred,
 };
 
 use codec::Decode;
@@ -610,7 +610,7 @@ fn should_end_ico() {
 
         let ico_meta = IcoMetaOf::<Test>::get(nft).unwrap();
         let meta = Metadata::<Test>::get(nft).unwrap();
-        let block_num = Date::<Test>::get(nft).unwrap();
+        let block_num = ClaimStartAt::<Test>::get(nft).unwrap();
         assert_eq!(ico_meta.done, true);
         assert_eq!(Assets::balance(nft, meta.pot), 50);
         assert_eq!(block_num, 0);

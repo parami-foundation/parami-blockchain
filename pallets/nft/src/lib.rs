@@ -225,9 +225,9 @@ pub mod pallet {
     #[pallet::getter(fn preferred)]
     pub(super) type Preferred<T: Config> = StorageMap<_, Identity, T::DecentralizedId, NftOf<T>>;
 
-    /// Initial Minting date
+    /// Block Number Claim Started At
     #[pallet::storage]
-    pub(super) type Date<T: Config> = StorageMap<_, Twox64Concat, NftOf<T>, HeightOf<T>>;
+    pub(super) type ClaimStartAt<T: Config> = StorageMap<_, Twox64Concat, NftOf<T>, HeightOf<T>>;
 
     #[pallet::storage]
     pub(super) type IcoMetaOf<T: Config> = StorageMap<_, Twox64Concat, NftOf<T>, IcoMeta<T>>;
@@ -680,7 +680,7 @@ pub mod pallet {
                     T::Nft::create_collection(&id, &pot, &pot).unwrap();
                     T::Nft::mint_into(&id, &id, &pot).unwrap();
 
-                    <Date<T>>::insert(id, HeightOf::<T>::zero());
+                    <ClaimStartAt<T>>::insert(id, HeightOf::<T>::zero());
                 }
             }
 
@@ -790,7 +790,7 @@ impl<T: Config> Pallet<T> {
     ) -> Result<(BalanceOf<T>, BalanceOf<T>, BalanceOf<T>), DispatchError> {
         let height = <frame_system::Pallet<T>>::block_number();
 
-        let minted_block_number = <Date<T>>::get(nft).ok_or(Error::<T>::NotExists)?;
+        let minted_block_number = <ClaimStartAt<T>>::get(nft).ok_or(Error::<T>::NotExists)?;
 
         let passed_blocks = height - minted_block_number;
 
@@ -1010,7 +1010,7 @@ impl<T: Config> Pallet<T> {
         }
 
         let ico_ended_at = <frame_system::Pallet<T>>::block_number();
-        <Date<T>>::insert(nft_id, ico_ended_at);
+        <ClaimStartAt<T>>::insert(nft_id, ico_ended_at);
         ico_meta.done = true;
         IcoMetaOf::<T>::insert(nft_id, ico_meta);
         Ok(())
