@@ -11,7 +11,7 @@ pub mod v4 {
     use crate::Deposit;
     use crate::Pallet;
     use crate::StorageVersion;
-    use crate::{BalanceOf, ClaimStartAt, HeightOf, IcoMeta, IcoMetaOf, Metadata, NftOf};
+    use crate::{BalanceOf, ClaimStartAt, Deposits, HeightOf, IcoMeta, IcoMetaOf, Metadata, NftOf};
     use parami_primitives::constants::DOLLARS;
 
     #[derive(Debug)]
@@ -33,11 +33,18 @@ pub mod v4 {
                 .map_err(|_e| Error::NumberConversionFailed)
                 .unwrap();
 
+            let default_expected_currency: BalanceOf<T> = TryInto::try_into(10_000_000 * DOLLARS)
+                .map_err(|_e| Error::NumberConversionFailed)
+                .unwrap();
+
             for (nft_id, meta) in Metadata::<T>::iter() {
                 if meta.minted {
                     if IcoMetaOf::<T>::get(nft_id).is_none() {
                         log::info!("start to migrate nft_id {:?}", nft_id);
-                        let deposit = Deposit::<T>::get(nft_id).unwrap();
+                        let deposit = Deposit::<T>::get(nft_id).unwrap_or_else(|| {
+                            Deposits::<T>::get(nft_id, &meta.owner)
+                                .unwrap_or(default_expected_currency)
+                        });
 
                         let issued = T::Assets::total_issuance(nft_id);
 
@@ -51,14 +58,16 @@ pub mod v4 {
                             },
                         );
 
-                        let owner_account =
-                            parami_did::Pallet::<T>::lookup_did(meta.owner).unwrap();
-
-                        let should_mint = token_should_issued.saturating_sub(issued);
-                        let result = T::Assets::mint_into(nft_id, &owner_account, should_mint);
-                        if result.is_err() {
-                            log::error!("token transfer error {:?}", nft_id);
-                            panic!("token tranfer error");
+                        let owner_account = parami_did::Pallet::<T>::lookup_did(meta.owner);
+                        if let Some(account) = owner_account {
+                            let should_mint = token_should_issued.saturating_sub(issued);
+                            let result = T::Assets::mint_into(nft_id, &account, should_mint);
+                            if result.is_err() {
+                                log::error!("token transfer error {:?} {:?}", nft_id, result);
+                                panic!("token tranfer error");
+                            }
+                        } else {
+                            log::error!("did not linked to account: {:?}", owner_account);
                         }
 
                         log::info!("end to migrate nft_id {:?}", nft_id);
