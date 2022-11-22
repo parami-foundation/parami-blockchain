@@ -517,7 +517,15 @@ pub mod pallet {
             ensure!(name.iter().all(is_valid_char), Error::<T>::BadMetadata);
             ensure!(symbol.iter().all(is_valid_char), Error::<T>::BadMetadata);
 
-            Self::create_nft_power(nft_id, meta, minting_tokens, name, symbol, &account, did)?;
+            Self::create_nft_and_mint_power(
+                nft_id,
+                meta,
+                minting_tokens,
+                name,
+                symbol,
+                &account,
+                did,
+            )?;
 
             Ok(().into())
         }
@@ -596,10 +604,10 @@ pub mod pallet {
         }
 
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
-        pub fn import_kol(
+        pub fn force_import_kol(
             origin: OriginFor<T>,
-            account: AccountOf<T>,
-            name: Vec<u8>,
+            kol_account: AccountOf<T>,
+            power_name: Vec<u8>,
             ether_addr: Vec<u8>,
             ether_token_id: Vec<u8>,
             token_amount: BalanceOf<T>,
@@ -607,11 +615,11 @@ pub mod pallet {
         ) -> DispatchResult {
             ensure_root(origin)?;
 
-            let did_op = parami_did::Pallet::<T>::lookup_did_by_account_id(account.clone());
+            let did_op = parami_did::Pallet::<T>::lookup_did_by_account_id(kol_account.clone());
             let did = if let Some(did) = did_op {
                 did
             } else {
-                parami_did::Pallet::<T>::create(account.clone(), None)?
+                parami_did::Pallet::<T>::create(kol_account.clone(), None)?
             };
 
             let nft_id = if let Some(id) = <Ported<T>>::get((
@@ -647,20 +655,20 @@ pub mod pallet {
 
             let meta = Metadata::<T>::get(nft_id).unwrap();
             if !meta.minted {
-                Self::create_nft_power(
+                Self::create_nft_and_mint_power(
                     nft_id,
                     meta,
                     token_amount,
-                    name.clone(),
-                    name,
-                    &account,
+                    power_name.clone(),
+                    power_name,
+                    &kol_account,
                     did,
                 )?;
             }
 
             T::Swaps::new(nft_id)?;
             T::Swaps::mint(
-                &account,
+                &kol_account,
                 nft_id,
                 currency_amount,
                 currency_amount,
@@ -926,7 +934,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn create_nft_power(
+    fn create_nft_and_mint_power(
         nft_id: NftOf<T>,
         meta: MetaOf<T>,
         minting_tokens: BalanceOf<T>,

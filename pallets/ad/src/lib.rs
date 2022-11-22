@@ -541,7 +541,7 @@ pub mod pallet {
         }
 
         #[pallet::weight(<T as Config>::WeightInfo::pay())]
-        pub fn force_bid_ads(
+        pub fn force_bid_ad(
             origin: OriginFor<T>,
             ad_id: HashOf<T>,
             nft_id: NftOf<T>,
