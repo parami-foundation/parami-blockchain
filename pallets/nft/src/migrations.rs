@@ -19,6 +19,51 @@ pub mod v4 {
         NumberConversionFailed,
     }
 
+    pub struct FixDeposit<T>(sp_std::marker::PhantomData<T>);
+
+    impl<T: Config> OnRuntimeUpgrade for FixDeposit<T> {
+        fn on_runtime_upgrade() -> Weight {
+            let default_expected_currency: BalanceOf<T> = TryInto::try_into(100 * DOLLARS)
+                .map_err(|_e| Error::NumberConversionFailed)
+                .unwrap();
+
+            for (nft_id, meta) in Metadata::<T>::iter() {
+                if meta.minted {
+                    if Deposit::<T>::get(nft_id).is_none() {
+                        let deposit = Deposits::<T>::get(nft_id, &meta.owner)
+                            .unwrap_or(default_expected_currency);
+                        Deposit::<T>::insert(nft_id, deposit);
+
+                        log::info!("empty deposit: {:?} {:?}", nft_id, deposit);
+                    }
+                }
+            }
+            0
+        }
+
+        #[cfg(feature = "try-runtime")]
+        fn pre_upgrade() -> Result<(), &'static str> {
+            let mut count = 0;
+            for _ in Deposit::<T>::iter() {
+                count += 1;
+            }
+
+            log::info!("before deposit count: {:?}", count);
+            Ok(())
+        }
+
+        #[cfg(feature = "try-runtime")]
+        fn post_upgrade() -> Result<(), &'static str> {
+            let mut count = 0;
+            for _ in Deposit::<T>::iter() {
+                count += 1;
+            }
+
+            log::info!("after deposit count: {:?}", count);
+            Ok(())
+        }
+    }
+
     pub struct MigrateIcoMeta<T>(sp_std::marker::PhantomData<T>);
 
     impl<T: Config> OnRuntimeUpgrade for MigrateIcoMeta<T> {
@@ -45,10 +90,7 @@ pub mod v4 {
                 if meta.minted {
                     if IcoMetaOf::<T>::get(nft_id).is_none() {
                         log::info!("start to migrate nft_id {:?}", nft_id);
-                        let deposit = Deposit::<T>::get(nft_id).unwrap_or_else(|| {
-                            Deposits::<T>::get(nft_id, &meta.owner)
-                                .unwrap_or(default_expected_currency)
-                        });
+                        let deposit = Deposit::<T>::get(nft_id).unwrap();
 
                         let issued = T::Assets::total_issuance(nft_id);
 
