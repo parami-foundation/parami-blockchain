@@ -365,90 +365,15 @@ pub mod pallet {
         ) -> DispatchResult {
             let (did, who) = T::CallOrigin::ensure_origin(origin)?;
 
-            let height = <frame_system::Pallet<T>>::block_number();
-            let endtime = <EndtimeOf<T>>::get(&ad_id).ok_or(Error::<T>::NotExists)?;
-            ensure!(endtime > height, Error::<T>::Deadline);
-
-            let fungibles = match fungibles {
-                Some(fungibles) if fungibles > Zero::zero() && fungible_id.is_some() => {
-                    let fungible_id = fungible_id.unwrap();
-                    ensure!(
-                        fungibles <= T::Assets::reducible_balance(fungible_id, &who, true),
-                        Error::<T>::InsufficientFungibles
-                    );
-                    fungibles
-                }
-                _ => Zero::zero(),
-            };
-
-            let ad_meta = Self::ensure_owned_or_delegated_by_ad_id(did, ad_id)?;
-
-            let nft_meta = Nft::<T>::meta(nft_id).ok_or(Error::<T>::NotMinted)?;
-            ensure!(nft_meta.minted, Error::<T>::NotMinted);
-
-            let created = <frame_system::Pallet<T>>::block_number();
-
-            // check account has enough balance
-            let fraction_balance =
-                T::Assets::reducible_balance(nft_meta.token_asset_id, &who, false);
-            ensure!(
-                fraction_balance >= fraction_value,
-                Error::<T>::InsufficientFractions
-            );
-
-            // 1. check slot of kol
-            let slot = <SlotOf<T>>::get(nft_id);
-
-            // 2. if slot is used
-            // require a 20% increase of current budget
-            // and drawback current ad
-
-            if let Some(slot) = slot {
-                let locked_fractions = Self::slot_current_fraction_balance(&slot);
-
-                ensure!(
-                    fraction_value.saturating_mul(100u32.into())
-                        > locked_fractions.saturating_mul(120u32.into()),
-                    Error::<T>::Underbid
-                );
-
-                Self::drawback(&slot)?;
-            }
-
-            // 3. deposit fractions and fungibles
-            let pot = Self::generate_slot_pot(nft_id);
-            T::Assets::transfer(nft_meta.token_asset_id, &who, &pot, fraction_value, false)?;
-
-            if let Some(fungible_id) = fungible_id {
-                T::Assets::transfer(fungible_id, &who, &pot, fungibles, false)?;
-            }
-
-            // 4. update slot
-
-            let lifetime = T::SlotLifetime::get();
-            let slotlife = created.saturating_add(lifetime);
-            let deadline = if slotlife > endtime {
-                endtime
-            } else {
-                slotlife
-            };
-
-            let slot = types::Slot {
+            Self::bid_with_fraction_inner(
+                did,
+                who,
                 ad_id,
                 nft_id,
-                fraction_id: nft_meta.token_asset_id,
-                budget_pot: pot,
+                fraction_value,
                 fungible_id,
-                created,
-            };
-
-            <SlotOf<T>>::insert(nft_id, &slot);
-            <DeadlineOf<T>>::insert(nft_id, &ad_id, deadline);
-            <Metadata<T>>::insert(&ad_id, &ad_meta);
-
-            Self::deposit_event(Event::Bid(nft_id, ad_id, fraction_value));
-
-            Ok(())
+                fungibles,
+            )
         }
 
         #[pallet::weight((0, Pays::No))]
@@ -613,6 +538,28 @@ pub mod pallet {
                 &Option::Some(did),
                 &Option::Some(who),
             )
+        }
+
+        #[pallet::weight(<T as Config>::WeightInfo::pay())]
+        pub fn force_bid_ads(
+            origin: OriginFor<T>,
+            ad_id: HashOf<T>,
+            nft_id: NftOf<T>,
+            fraction_value: BalanceOf<T>,
+            force_drawback: bool,
+        ) -> DispatchResult {
+            ensure_root(origin.clone())?;
+            let (did, who) = T::CallOrigin::ensure_origin(origin)?;
+
+            let slot = <SlotOf<T>>::get(nft_id);
+            if let Some(slot) = slot {
+                if force_drawback {
+                    Self::drawback(&slot)?;
+                }
+            }
+
+            Self::bid_with_fraction_inner(did, who, ad_id, nft_id, fraction_value, None, None)?;
+            Ok(())
         }
     }
 
@@ -982,5 +929,99 @@ impl<T: Config> Pallet<T> {
         let val: u128 = TryInto::try_into(value).map_err(|_| Error::<T>::Overflow)?;
         let ret_val: TF = TryFrom::try_from(val).map_err(|_| Error::<T>::Overflow)?;
         return Ok(ret_val);
+    }
+
+    pub fn bid_with_fraction_inner(
+        did: DidOf<T>,
+        who: AccountOf<T>,
+        ad_id: HashOf<T>,
+        nft_id: NftOf<T>,
+        fraction_value: BalanceOf<T>,
+        fungible_id: Option<AssetsOf<T>>,
+        fungibles: Option<BalanceOf<T>>,
+    ) -> DispatchResult {
+        let height = <frame_system::Pallet<T>>::block_number();
+        let endtime = <EndtimeOf<T>>::get(&ad_id).ok_or(Error::<T>::NotExists)?;
+        ensure!(endtime > height, Error::<T>::Deadline);
+
+        let fungibles = match fungibles {
+            Some(fungibles) if fungibles > Zero::zero() && fungible_id.is_some() => {
+                let fungible_id = fungible_id.unwrap();
+                ensure!(
+                    fungibles <= T::Assets::reducible_balance(fungible_id, &who, true),
+                    Error::<T>::InsufficientFungibles
+                );
+                fungibles
+            }
+            _ => Zero::zero(),
+        };
+
+        let ad_meta = Self::ensure_owned_or_delegated_by_ad_id(did, ad_id)?;
+
+        let nft_meta = Nft::<T>::meta(nft_id).ok_or(Error::<T>::NotMinted)?;
+        ensure!(nft_meta.minted, Error::<T>::NotMinted);
+
+        let created = <frame_system::Pallet<T>>::block_number();
+
+        // check account has enough balance
+        let fraction_balance = T::Assets::reducible_balance(nft_meta.token_asset_id, &who, false);
+        ensure!(
+            fraction_balance >= fraction_value,
+            Error::<T>::InsufficientFractions
+        );
+
+        // 1. check slot of kol
+        let slot = <SlotOf<T>>::get(nft_id);
+
+        // 2. if slot is used
+        // require a 20% increase of current budget
+        // and drawback current ad
+
+        if let Some(slot) = slot {
+            let locked_fractions = Self::slot_current_fraction_balance(&slot);
+
+            ensure!(
+                fraction_value.saturating_mul(100u32.into())
+                    > locked_fractions.saturating_mul(120u32.into()),
+                Error::<T>::Underbid
+            );
+
+            Self::drawback(&slot)?;
+        }
+
+        // 3. deposit fractions and fungibles
+        let pot = Self::generate_slot_pot(nft_id);
+        T::Assets::transfer(nft_meta.token_asset_id, &who, &pot, fraction_value, false)?;
+
+        if let Some(fungible_id) = fungible_id {
+            T::Assets::transfer(fungible_id, &who, &pot, fungibles, false)?;
+        }
+
+        // 4. update slot
+
+        let lifetime = T::SlotLifetime::get();
+        let slotlife = created.saturating_add(lifetime);
+        let deadline = if slotlife > endtime {
+            endtime
+        } else {
+            slotlife
+        };
+
+        let slot = types::Slot {
+            ad_id,
+            nft_id,
+            fraction_id: nft_meta.token_asset_id,
+            budget_pot: pot,
+            fungible_id,
+            created,
+        };
+
+        <SlotOf<T>>::insert(nft_id, &slot);
+        <DeadlineOf<T>>::insert(nft_id, &ad_id, deadline);
+        <Metadata<T>>::insert(&ad_id, &ad_meta);
+
+        Self::deposit_event(Event::Bid(nft_id, ad_id, fraction_value));
+
+        Ok(())
     }
 }
