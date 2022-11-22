@@ -78,10 +78,6 @@ pub mod v4 {
                 .map_err(|_e| Error::NumberConversionFailed)
                 .unwrap();
 
-            let default_expected_currency: BalanceOf<T> = TryInto::try_into(1_000 * DOLLARS)
-                .map_err(|_e| Error::NumberConversionFailed)
-                .unwrap();
-
             let swapped_tokens: BalanceOf<T> = TryInto::try_into(1_000_000 * DOLLARS)
                 .map_err(|_e| Error::NumberConversionFailed)
                 .unwrap();
