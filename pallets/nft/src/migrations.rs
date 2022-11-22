@@ -33,7 +33,11 @@ pub mod v4 {
                 .map_err(|_e| Error::NumberConversionFailed)
                 .unwrap();
 
-            let default_expected_currency: BalanceOf<T> = TryInto::try_into(10_000_000 * DOLLARS)
+            let default_expected_currency: BalanceOf<T> = TryInto::try_into(1_000 * DOLLARS)
+                .map_err(|_e| Error::NumberConversionFailed)
+                .unwrap();
+
+            let swapped_tokens: BalanceOf<T> = TryInto::try_into(1_000_000 * DOLLARS)
                 .map_err(|_e| Error::NumberConversionFailed)
                 .unwrap();
 
@@ -53,7 +57,7 @@ pub mod v4 {
                             IcoMeta::<T> {
                                 done: true,
                                 expected_currency: deposit,
-                                offered_tokens: token_should_issued.max(issued),
+                                offered_tokens: swapped_tokens,
                                 pot: Pallet::<T>::generate_ico_pot(&nft_id),
                             },
                         );
