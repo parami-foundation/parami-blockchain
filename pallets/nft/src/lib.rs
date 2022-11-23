@@ -603,6 +603,10 @@ pub mod pallet {
             Ok(())
         }
 
+        // we should keep this call idempotent in case of the following conditions:
+
+        // 1. this call is not transactional
+        // 2. and failed due to lacks of token or currency
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
         pub fn force_import_kol(
             origin: OriginFor<T>,

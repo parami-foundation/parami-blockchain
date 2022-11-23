@@ -36,7 +36,7 @@ use frame_system::pallet_prelude::*;
 use parami_did::EnsureDid;
 use parami_did::Pallet as Did;
 use parami_nft::Pallet as Nft;
-use parami_traits::Tags;
+use parami_traits::{Swaps, Tags};
 use sp_core::crypto::AccountId32;
 use sp_core::crypto::ByteArray;
 use sp_core::U512;
@@ -373,7 +373,9 @@ pub mod pallet {
                 fraction_value,
                 fungible_id,
                 fungibles,
-            )
+            )?;
+
+            Ok(())
         }
 
         #[pallet::weight((0, Pays::No))]
@@ -545,7 +547,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             ad_id: HashOf<T>,
             nft_id: NftOf<T>,
-            fraction_value: BalanceOf<T>,
+            currency_amount: BalanceOf<T>,
             force_drawback: bool,
         ) -> DispatchResult {
             ensure_root(origin.clone())?;
@@ -558,8 +560,18 @@ pub mod pallet {
                 }
             }
 
-            Self::bid_with_fraction_inner(did, who, ad_id, nft_id, fraction_value, None, None)?;
-            Ok(())
+            let token_amount_dry = T::Swaps::quote_in_dry(nft_id, currency_amount)?;
+            let token_amount =
+                T::Swaps::quote_in(who.clone(), nft_id, currency_amount, token_amount_dry, true)?;
+
+            let result =
+                Self::bid_with_fraction_inner(did, who, ad_id, nft_id, token_amount, None, None);
+
+            match result {
+                // fail silently to avoid interrupting batch call
+                Err(Error::<T>::Underbid) => Ok(()),
+                _ => result.map_err(|e| e.into()),
+            }
         }
     }
 
@@ -939,7 +951,7 @@ impl<T: Config> Pallet<T> {
         fraction_value: BalanceOf<T>,
         fungible_id: Option<AssetsOf<T>>,
         fungibles: Option<BalanceOf<T>>,
-    ) -> DispatchResult {
+    ) -> Result<(), Error<T>> {
         let height = <frame_system::Pallet<T>>::block_number();
         let endtime = <EndtimeOf<T>>::get(&ad_id).ok_or(Error::<T>::NotExists)?;
         ensure!(endtime > height, Error::<T>::Deadline);
