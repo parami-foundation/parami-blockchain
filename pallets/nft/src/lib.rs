@@ -622,34 +622,36 @@ pub mod pallet {
                 parami_did::Pallet::<T>::create(kol_account.clone(), None)?
             };
 
-            if let Some(id) = <Ported<T>>::get((
+            let nft_id = if let Some(id) = <Ported<T>>::get((
                 Network::Ethereum,
                 ether_addr.clone(),
                 ether_token_id.clone(),
             )) {
-                return Ok(());
-            }
+                id
+            } else {
+                let id = Self::create(did)?;
 
-            let nft_id = Self::create(did)?;
+                <Ported<T>>::insert(
+                    (
+                        Network::Ethereum,
+                        ether_addr.clone(),
+                        ether_token_id.clone(),
+                    ),
+                    id,
+                );
 
-            <Ported<T>>::insert(
-                (
-                    Network::Ethereum,
-                    ether_addr.clone(),
-                    ether_token_id.clone(),
-                ),
-                nft_id,
-            );
+                <External<T>>::insert(
+                    id,
+                    types::External {
+                        network: Network::Ethereum,
+                        namespace: ether_addr.clone(),
+                        token: ether_token_id.clone(),
+                        owner: did,
+                    },
+                );
 
-            <External<T>>::insert(
-                nft_id,
-                types::External {
-                    network: Network::Ethereum,
-                    namespace: ether_addr.clone(),
-                    token: ether_token_id.clone(),
-                    owner: did,
-                },
-            );
+                id
+            };
 
             let meta = Metadata::<T>::get(nft_id).unwrap();
             if !meta.minted {
