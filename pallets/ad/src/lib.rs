@@ -545,13 +545,14 @@ pub mod pallet {
         #[pallet::weight(<T as Config>::WeightInfo::pay())]
         pub fn force_bid_ad(
             origin: OriginFor<T>,
+            // we can't get account from a root origin.
+            root_account: AccountOf<T>,
             ad_id: HashOf<T>,
             nft_id: NftOf<T>,
             currency_amount: BalanceOf<T>,
             force_drawback: bool,
         ) -> DispatchResult {
             ensure_root(origin.clone())?;
-            let (did, who) = T::CallOrigin::ensure_origin(origin)?;
 
             let slot = <SlotOf<T>>::get(nft_id);
             if let Some(slot) = slot {
@@ -560,18 +561,33 @@ pub mod pallet {
                 }
             }
 
+            let did = parami_did::Pallet::<T>::lookup_did_by_account_id(root_account.clone())
+                .ok_or(Error::<T>::NotExists)?;
+
             let token_amount_dry = T::Swaps::quote_in_dry(nft_id, currency_amount)?;
-            let token_amount =
-                T::Swaps::quote_in(who.clone(), nft_id, currency_amount, token_amount_dry, true)?;
+            let token_balance = T::Assets::balance(nft_id, &root_account);
 
-            let result =
-                Self::bid_with_fraction_inner(did, who, ad_id, nft_id, token_amount, None, None);
-
-            match result {
-                // fail silently to avoid interrupting batch call
-                Err(Error::<T>::Underbid) => Ok(()),
-                _ => result.map_err(|e| e.into()),
+            if token_balance < token_amount_dry {
+                T::Swaps::token_out(
+                    root_account.clone(),
+                    nft_id,
+                    token_amount_dry - token_balance,
+                    currency_amount,
+                    true,
+                )?;
             }
+
+            let result = Self::bid_with_fraction_inner(
+                did,
+                root_account,
+                ad_id,
+                nft_id,
+                token_amount_dry,
+                None,
+                None,
+            );
+
+            result
         }
     }
 
@@ -951,7 +967,7 @@ impl<T: Config> Pallet<T> {
         fraction_value: BalanceOf<T>,
         fungible_id: Option<AssetsOf<T>>,
         fungibles: Option<BalanceOf<T>>,
-    ) -> Result<(), Error<T>> {
+    ) -> Result<(), DispatchError> {
         let height = <frame_system::Pallet<T>>::block_number();
         let endtime = <EndtimeOf<T>>::get(&ad_id).ok_or(Error::<T>::NotExists)?;
         ensure!(endtime > height, Error::<T>::Deadline);

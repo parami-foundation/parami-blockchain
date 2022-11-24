@@ -179,7 +179,7 @@ fn should_buy_tokens() {
 
         assert_noop!(
             Swap::buy_tokens(Origin::signed(ALICE), token, 17, 200, 100),
-            Error::<Test>::TooExpensiveCurrency
+            TooExpensiveCurrency
         );
 
         assert_ok!(Swap::buy_tokens(Origin::signed(ALICE), token, 17, 300, 100));

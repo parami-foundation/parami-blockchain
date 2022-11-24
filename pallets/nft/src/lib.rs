@@ -610,6 +610,8 @@ pub mod pallet {
         #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
         pub fn force_import_kol(
             origin: OriginFor<T>,
+            // we can't get root account from a sudo call.
+            root_account: AccountOf<T>,
             kol_account: AccountOf<T>,
             power_name: Vec<u8>,
             ether_addr: Vec<u8>,
@@ -617,7 +619,7 @@ pub mod pallet {
             token_amount: BalanceOf<T>,
             currency_amount: BalanceOf<T>,
         ) -> DispatchResult {
-            ensure_root(origin)?;
+            ensure_root(origin.clone())?;
 
             let did_op = parami_did::Pallet::<T>::lookup_did_by_account_id(kol_account.clone());
             let did = if let Some(did) = did_op {
@@ -670,15 +672,23 @@ pub mod pallet {
                 )?;
             }
 
-            T::Swaps::new(nft_id)?;
-            T::Swaps::mint(
-                &kol_account,
-                nft_id,
-                currency_amount,
-                currency_amount,
-                token_amount,
-                false,
-            )?;
+            let _result = T::Swaps::new(nft_id);
+            if T::Swaps::liquidity(nft_id, &kol_account) == 0u32.into() {
+                T::Currency::transfer(
+                    &root_account,
+                    &kol_account,
+                    currency_amount,
+                    ExistenceRequirement::KeepAlive,
+                )?;
+                T::Swaps::mint(
+                    &kol_account,
+                    nft_id,
+                    currency_amount,
+                    currency_amount,
+                    token_amount,
+                    false,
+                )?;
+            }
 
             Ok(())
         }
