@@ -517,26 +517,15 @@ pub mod pallet {
             ensure!(name.iter().all(is_valid_char), Error::<T>::BadMetadata);
             ensure!(symbol.iter().all(is_valid_char), Error::<T>::BadMetadata);
 
-            // create nft collection
-            T::Nft::create_collection(&meta.class_id, &meta.pot, &meta.pot)?;
-            T::Nft::mint_into(&meta.class_id, &nft_id, &meta.pot)?;
-
-            // mint funds
-            Self::mint_tokens(minting_tokens, &meta, &account, &name, &symbol)?;
-
-            // update metadata
-            meta.minted = true;
-            <Metadata<T>>::insert(nft_id, meta);
-
-            // send event
-            Self::deposit_event(Event::Minted(
-                did,
+            Self::create_nft_and_mint_power(
                 nft_id,
-                nft_id,
+                meta,
+                minting_tokens,
                 name,
                 symbol,
-                minting_tokens,
-            ));
+                &account,
+                did,
+            )?;
 
             Ok(().into())
         }
@@ -611,6 +600,96 @@ pub mod pallet {
                 .try_into()
                 .map_err(|_| "Endpoint exceeds maximum length")?;
             <ValidateEndpoint<T>>::insert(network, endpoint);
+            Ok(())
+        }
+
+        // we should keep this call idempotent in case of the following conditions:
+
+        // 1. this call is not transactional
+        // 2. and failed due to lacks of token or currency
+        #[pallet::weight(<T as Config>::WeightInfo::submit_porting())]
+        pub fn force_import_kol(
+            origin: OriginFor<T>,
+            // we can't get root account from a sudo call.
+            root_account: AccountOf<T>,
+            kol_account: AccountOf<T>,
+            power_name: Vec<u8>,
+            ether_addr: Vec<u8>,
+            ether_token_id: Vec<u8>,
+            token_amount: BalanceOf<T>,
+            currency_amount: BalanceOf<T>,
+        ) -> DispatchResult {
+            ensure_root(origin.clone())?;
+
+            let did_op = parami_did::Pallet::<T>::lookup_did_by_account_id(kol_account.clone());
+            let did = if let Some(did) = did_op {
+                did
+            } else {
+                parami_did::Pallet::<T>::create(kol_account.clone(), None)?
+            };
+
+            let nft_id = if let Some(id) = <Ported<T>>::get((
+                Network::Ethereum,
+                ether_addr.clone(),
+                ether_token_id.clone(),
+            )) {
+                id
+            } else {
+                let id = Self::create(did)?;
+
+                <Ported<T>>::insert(
+                    (
+                        Network::Ethereum,
+                        ether_addr.clone(),
+                        ether_token_id.clone(),
+                    ),
+                    id,
+                );
+
+                <External<T>>::insert(
+                    id,
+                    types::External {
+                        network: Network::Ethereum,
+                        namespace: ether_addr.clone(),
+                        token: ether_token_id.clone(),
+                        owner: did,
+                    },
+                );
+
+                id
+            };
+
+            let meta = Metadata::<T>::get(nft_id).unwrap();
+            if !meta.minted {
+                Self::create_nft_and_mint_power(
+                    nft_id,
+                    meta,
+                    token_amount,
+                    power_name.clone(),
+                    power_name,
+                    &kol_account,
+                    did,
+                )?;
+            }
+
+            let _result = T::Swaps::new(nft_id);
+            if T::Swaps::liquidity(nft_id, &kol_account) == 0u32.into() {
+                T::Currency::transfer(
+                    &root_account,
+                    &kol_account,
+                    currency_amount,
+                    ExistenceRequirement::KeepAlive,
+                )?;
+                T::Swaps::mint(
+                    &kol_account,
+                    nft_id,
+                    currency_amount,
+                    currency_amount,
+                    token_amount,
+                    false,
+                )?;
+            }
+
             Ok(())
         }
     }
@@ -865,6 +944,44 @@ impl<T: Config> Pallet<T> {
         T::Assets::create(asset_id, owner_account.clone(), true, One::one())?;
         T::Assets::set(asset_id, owner_account, name.clone(), symbol.clone(), 18)?;
         T::Assets::mint_into(asset_id, owner_account, amount)?;
+
+        Ok(())
+    }
+
+    fn create_nft_and_mint_power(
+        nft_id: NftOf<T>,
+        meta: MetaOf<T>,
+        minting_tokens: BalanceOf<T>,
+        name: Vec<u8>,
+        symbol: Vec<u8>,
+        owner_account: &AccountOf<T>,
+        owner_did: DidOf<T>,
+    ) -> Result<(), DispatchError> {
+        // create nft collection
+        T::Nft::create_collection(&meta.class_id, &meta.pot, &meta.pot)?;
+        T::Nft::mint_into(&meta.class_id, &nft_id, &meta.pot)?;
+
+        // mint funds
+        Self::mint_tokens(minting_tokens, &meta, &owner_account, &name, &symbol)?;
+
+        // update metadata
+        <Metadata<T>>::insert(
+            nft_id,
+            &MetaOf::<T> {
+                minted: true,
+                ..meta
+            },
+        );
+
+        // send event
+        Self::deposit_event(Event::Minted(
+            owner_did,
+            nft_id,
+            nft_id,
+            name,
+            symbol,
+            minting_tokens,
+        ));
 
         Ok(())
     }
