@@ -38,7 +38,8 @@ type BalanceOf<T> = <<T as parami_did::Config>::Currency as Currency<AccountOf<T
 type DidOf<T> = <T as parami_did::Config>::DecentralizedId;
 type HeightOf<T> = <T as frame_system::Config>::BlockNumber;
 type NftOf<T> = <T as parami_nft::Config>::AssetId;
-type MetaOf<T> = types::Metadata<HeightOf<T>, AccountOf<T>, BalanceOf<T>>;
+type MetaOf<T> =
+    types::Metadata<HeightOf<T>, AccountOf<T>, BalanceOf<T>, <T as parami_nft::Config>::AssetId>;
 
 const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 
@@ -61,6 +62,9 @@ pub mod pallet {
         /// The pallet id, used for deriving "pot" accounts to receive donation
         #[pallet::constant]
         type PalletId: Get<PalletId>;
+
+        #[pallet::constant]
+        type ClockInBucketSize: Get<HeightOf<Self>>;
     }
 
     /// Metadata
@@ -69,7 +73,7 @@ pub mod pallet {
 
     #[pallet::storage]
     pub(super) type LastClockIn<T: Config> =
-        StorageDoubleMap<_, Twox64Concat, NftOf<T>, Twox64Concat, DidOf<T>, i32, ValueQuery>;
+        StorageDoubleMap<_, Twox64Concat, NftOf<T>, Twox64Concat, DidOf<T>, u32, ValueQuery>;
 
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
@@ -82,6 +86,7 @@ pub mod pallet {
     pub enum Event<T: Config> {
         ClockInEnabled(NftOf<T>),
         ClockInDisabled(NftOf<T>),
+        ClockIn(NftOf<T>, DidOf<T>),
     }
 
     #[pallet::error]
@@ -91,6 +96,8 @@ pub mod pallet {
         NftNotMinted,
         InsufficientToken,
         ClockInNotExists,
+        ClockedIn,
+        NumberConversionError,
     }
 
     #[pallet::call]
@@ -126,6 +133,8 @@ pub mod pallet {
                 true,
             )?;
 
+            let bucket_size = T::ClockInBucketSize::get();
+
             let start_at = <frame_system::Pallet<T>>::block_number();
             Metadata::<T>::insert(
                 nft_id,
@@ -136,6 +145,8 @@ pub mod pallet {
                     metadata,
                     start_at,
                     pot,
+                    bucket_size,
+                    asset_id: nft_meta.token_asset_id,
                 },
             );
 
@@ -205,6 +216,35 @@ pub mod pallet {
             T::Assets::transfer(nft_meta.token_asset_id, &metadata.pot, &who, balance, false)?;
 
             Self::deposit_event(Event::<T>::ClockInDisabled(nft_id));
+            Ok(())
+        }
+
+        #[pallet::weight(0)]
+        pub fn clock_in(origin: OriginFor<T>, nft_id: NftOf<T>) -> DispatchResult {
+            let (did, who) = parami_did::EnsureDid::<T>::ensure_origin(origin)?;
+            let meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::ClockInNotExists)?;
+
+            let current_height = <frame_system::Pallet<T>>::block_number();
+            let last_clock_in_bucket: HeightOf<T> = LastClockIn::<T>::get(nft_id, did).into();
+            let clocked_in_height = meta.start_at + last_clock_in_bucket * meta.bucket_size;
+            ensure!(current_height >= clocked_in_height, Error::<T>::ClockedIn);
+
+            // TODO: change reward rule
+            let reward: BalanceOf<T> = 0u32.into();
+            let free_balance = T::Assets::balance(meta.asset_id, &meta.pot);
+            ensure!(free_balance >= 0u32.into(), Error::<T>::InsufficientToken);
+
+            let reward = reward.min(free_balance);
+            T::Assets::transfer(meta.asset_id, &meta.pot, &who, reward, false)?;
+
+            let clock_in_bucket = (current_height - meta.start_at) / meta.bucket_size;
+            let clock_in_bucket: u32 = clock_in_bucket
+                .try_into()
+                .map_err(|_| Error::<T>::NumberConversionError)?;
+            let clock_in_bucket = clock_in_bucket + 1;
+            LastClockIn::<T>::insert(nft_id, did, clock_in_bucket);
+
+            Self::deposit_event(Event::<T>::ClockIn(nft_id, did));
             Ok(())
         }
     }
