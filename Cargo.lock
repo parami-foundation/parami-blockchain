@@ -6102,6 +6102,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "parami-clockin"
+version = "3.0.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-assets",
+ "pallet-balances",
+ "pallet-uniques",
+ "parami-did",
+ "parami-nft",
+ "parami-primitives",
+ "parami-tag",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-runtime-interface",
+ "sp-std",
+]
+
+[[package]]
 name = "parami-dana"
 version = "3.0.0"
 dependencies = [
