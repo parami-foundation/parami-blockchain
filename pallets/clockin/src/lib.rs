@@ -8,30 +8,19 @@ use frame_support::{
     dispatch::DispatchResult,
     ensure,
     traits::{
-        tokens::{
-            fungibles::{
-                metadata::Mutate as FungMetaMutate, Create as FungCreate, Inspect,
-                Mutate as FungMutate, Transfer as FungTransfer,
-            },
-            nonfungibles::{Create as NftCreate, Mutate as NftMutate},
-        },
-        Currency, EnsureOrigin,
-        ExistenceRequirement::{self, KeepAlive},
-        Get, StorageVersion,
+        tokens::fungibles::{Inspect, Transfer as FungTransfer},
+        Currency, EnsureOrigin, Get, StorageVersion,
     },
-    PalletId,
+    Blake2_256, PalletId, StorageHasher,
 };
 use frame_system::offchain::SendTransactionTypes;
-use parami_did::EnsureDid;
-use sp_core::U512;
 use sp_runtime::{
-    traits::{AccountIdConversion, AtLeast32BitUnsigned, Bounded, One, Saturating, Zero},
-    DispatchError, RuntimeDebug,
+    traits::{AccountIdConversion, Hash, Saturating},
+    RuntimeDebug,
 };
-use sp_std::{
-    convert::{TryFrom, TryInto},
-    prelude::*,
-};
+use sp_std::{convert::TryInto, prelude::*};
+
+use parami_traits::{Tag, Tags};
 
 type AccountOf<T> = <T as frame_system::Config>::AccountId;
 type BalanceOf<T> = <<T as parami_did::Config>::Currency as Currency<AccountOf<T>>>::Balance;
@@ -40,6 +29,8 @@ type HeightOf<T> = <T as frame_system::Config>::BlockNumber;
 type NftOf<T> = <T as parami_nft::Config>::AssetId;
 type MetaOf<T> =
     types::Metadata<HeightOf<T>, AccountOf<T>, BalanceOf<T>, <T as parami_nft::Config>::AssetId>;
+type TagHash = <Blake2_256 as StorageHasher>::Output;
+type HashOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 
 const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 
@@ -59,6 +50,9 @@ pub mod pallet {
         /// The overarching event type
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
+        /// The means of storing the tags and tags of advertisement
+        type Tags: Tags<TagHash, HashOf<Self>, DidOf<Self>>;
+
         /// The pallet id, used for deriving "pot" accounts to receive donation
         #[pallet::constant]
         type PalletId: Get<PalletId>;
@@ -74,6 +68,10 @@ pub mod pallet {
     #[pallet::storage]
     pub(super) type LastClockIn<T: Config> =
         StorageDoubleMap<_, Twox64Concat, NftOf<T>, Twox64Concat, DidOf<T>, u32, ValueQuery>;
+
+    #[pallet::storage]
+    pub(super) type TagsOf<T: Config> =
+        StorageDoubleMap<_, Twox64Concat, NftOf<T>, Blake2_256, Vec<u8>, bool>;
 
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
@@ -110,7 +108,7 @@ pub mod pallet {
             payout_min: BalanceOf<T>,
             payout_max: BalanceOf<T>,
             metadata: Vec<u8>,
-            tags: Vec<Vec<u8>>,
+            tags: Vec<Tag>,
             total_reward_token: BalanceOf<T>,
         ) -> DispatchResult {
             let (did, who) = parami_did::EnsureDid::<T>::ensure_origin(origin)?;
@@ -122,7 +120,9 @@ pub mod pallet {
                 Error::<T>::InsufficientToken
             );
 
-            // TODO: handle tags
+            for tag in tags {
+                TagsOf::<T>::insert(nft_id, tag, true);
+            }
 
             let pot = Self::generate_reward_pot(&nft_id);
             T::Assets::transfer(
@@ -179,7 +179,7 @@ pub mod pallet {
             payout_min: BalanceOf<T>,
             payout_max: BalanceOf<T>,
             metadata: Vec<u8>,
-            tags: Vec<Vec<u8>>,
+            tags: Vec<Tag>,
         ) -> DispatchResult {
             let (did, _who) = parami_did::EnsureDid::<T>::ensure_origin(origin)?;
             let nft_meta = parami_nft::Pallet::<T>::meta(nft_id).ok_or(Error::<T>::NftNotExists)?;
@@ -187,7 +187,11 @@ pub mod pallet {
             ensure!(nft_meta.minted, Error::<T>::NftNotMinted);
             let meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::ClockInNotExists)?;
 
-            // TODO: handle tags
+            TagsOf::<T>::remove_prefix(nft_id, None);
+
+            for tag in tags {
+                TagsOf::<T>::insert(nft_id, tag, true);
+            }
 
             Metadata::<T>::insert(
                 nft_id,
@@ -210,7 +214,8 @@ pub mod pallet {
             ensure!(nft_meta.owner == did, Error::<T>::NotNftOwner);
             let metadata = Metadata::<T>::get(nft_id).ok_or(Error::<T>::ClockInNotExists)?;
 
-            // TODO: handle tags
+            Metadata::<T>::remove(nft_id);
+            TagsOf::<T>::remove_prefix(nft_id, None);
 
             let balance = T::Assets::balance(nft_id, &metadata.pot);
             T::Assets::transfer(nft_meta.token_asset_id, &metadata.pot, &who, balance, false)?;
@@ -229,8 +234,7 @@ pub mod pallet {
             let clocked_in_height = meta.start_at + last_clock_in_bucket * meta.bucket_size;
             ensure!(current_height >= clocked_in_height, Error::<T>::ClockedIn);
 
-            // TODO: change reward rule
-            let reward: BalanceOf<T> = 0u32.into();
+            let reward: BalanceOf<T> = Self::calculate_reward(nft_id, &did, &meta);
             let free_balance = T::Assets::balance(meta.asset_id, &meta.pot);
             ensure!(free_balance >= 0u32.into(), Error::<T>::InsufficientToken);
 
@@ -252,6 +256,49 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         fn generate_reward_pot(nft_id: &NftOf<T>) -> AccountOf<T> {
             return <T as crate::Config>::PalletId::get().into_sub_account_truncating(&nft_id);
+        }
+
+        fn calculate_reward(nft_id: NftOf<T>, did: &DidOf<T>, meta: &MetaOf<T>) -> BalanceOf<T> {
+            let mut scoring = 5i32;
+            let tag_hashes = Self::tags_of(nft_id);
+            let personas = T::Tags::personas_of(did);
+
+            let length = tag_hashes.len();
+            for (tag, score) in personas {
+                let delta = if tag_hashes.contains(&tag) {
+                    score.saturating_mul(10)
+                } else {
+                    score
+                };
+                scoring.saturating_accrue(delta);
+            }
+
+            scoring /= length.saturating_mul(10).saturating_add(1) as i32;
+
+            if scoring < 0 {
+                return 0u32.into();
+            }
+
+            let scoring = scoring as u32;
+
+            meta.payout_base
+                .saturating_mul(scoring.into())
+                .min(meta.payout_max)
+                .max(meta.payout_min)
+        }
+
+        fn tags_of(nft_id: NftOf<T>) -> Vec<TagHash> {
+            let mut tag_hashes = vec![];
+            let mut iter = TagsOf::<T>::iter_prefix_values(nft_id);
+            while let Some(_value) = iter.next() {
+                let prefix = iter.prefix();
+                let raw = iter.last_raw_key();
+                let mut hash = [0u8; 32];
+                hash.copy_from_slice(&raw[prefix.len()..]);
+                tag_hashes.push(hash);
+            }
+
+            tag_hashes
         }
     }
 

@@ -27,6 +27,7 @@ version = '2.1.1'
 parami-did = { path = '../did', default-features = false }
 parami-nft= { path = '../nft', default-features = false }
 parami-tag = { path = '../tag' }
+parami-traits= { path = '../traits' }
 parami-primitives = { path = '../../primitives', default-features = false }
 
 serde = { version = '1.0.0', optional = true }
