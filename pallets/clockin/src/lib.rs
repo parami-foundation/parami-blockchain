@@ -2,6 +2,12 @@
 
 pub use pallet::*;
 
+#[cfg(test)]
+mod mock;
+
+#[cfg(test)]
+mod tests;
+
 mod types;
 
 use frame_support::{
@@ -299,6 +305,16 @@ pub mod pallet {
             }
 
             tag_hashes
+        }
+
+        fn enabled_clockin(nft_id: NftOf<T>) -> bool {
+            let meta = Metadata::<T>::get(nft_id);
+            if let Some(meta) = meta {
+                let balance = T::Assets::balance(meta.asset_id, &meta.pot);
+                return balance > 0u32.into();
+            } else {
+                return false;
+            }
         }
     }
 

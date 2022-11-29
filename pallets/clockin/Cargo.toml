@@ -47,6 +47,9 @@ log = { version = "0.4.14", default-features = false }
 pallet-assets = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24' }
 pallet-balances = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24' }
 pallet-uniques = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24' }
+parami-assetmanager= { path='../assetmanager' }
+parami-ocw = { path='../ocw' }
+parami-swap = { path='../swap' }
 
 [features]
 default = ['std']
@@ -57,6 +60,7 @@ std = [
     'parami-did/std',
     'parami-nft/std',
     'parami-tag/std',
+    'parami-traits/std',
     'parami-primitives/std',
 
     'serde',
