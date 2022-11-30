@@ -920,6 +920,18 @@ impl parami_assetmanager::Config for Runtime {
     type AssetId = AssetId;
 }
 
+parameter_types! {
+    pub const ClockInPalletId: PalletId = PalletId(*names::CLOCKIN);
+    pub const ClockInBucketSize: BlockNumber = 1 * DAYS;
+}
+
+impl parami_clockin::Config for Runtime {
+    type Event = Event;
+    type Tags = Tag;
+    type PalletId = ClockInPalletId;
+    type ClockInBucketSize = ClockInBucketSize;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
     pub enum Runtime where
@@ -969,6 +981,7 @@ construct_runtime!(
         Tag: parami_tag::{Pallet, Call, Storage, Config<T>, Event<T>} = 109,
         AssetManager: parami_assetmanager::{Pallet, Storage, Config<T>} = 110,
         Stake: parami_stake::{Pallet, Storage, Event<T>} = 111,
+        ClockIn: parami_clockin::{Pallet, Storage, Event<T>, Config<T>} = 112
     }
 );
 

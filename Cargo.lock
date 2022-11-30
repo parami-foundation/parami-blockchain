@@ -6232,6 +6232,7 @@ dependencies = [
  "parami-advertiser",
  "parami-assetmanager",
  "parami-chainbridge",
+ "parami-clockin",
  "parami-did",
  "parami-linker",
  "parami-nft",
