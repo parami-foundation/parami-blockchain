@@ -241,7 +241,7 @@ pub mod pallet {
 
             let reward: BalanceOf<T> = Self::calculate_reward(nft_id, &did, &meta);
             let free_balance = T::Assets::balance(meta.asset_id, &meta.pot);
-            ensure!(free_balance >= 0u32.into(), Error::<T>::InsufficientToken);
+            ensure!(free_balance > 0u32.into(), Error::<T>::InsufficientToken);
 
             let reward = reward.min(free_balance);
             T::Assets::transfer(meta.asset_id, &meta.pot, &who, reward, false)?;

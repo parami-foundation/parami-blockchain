@@ -206,10 +206,15 @@ fn should_clock_in() {
             50,
         ));
 
+        let meta = Metadata::<Test>::get(nft_id).unwrap();
+        let pot = meta.pot;
+
+        assert_eq!(Assets::balance(nft_id, pot.clone()), 50);
         let before_balance = Assets::balance(nft_id, BOB);
         assert_ok!(ClockIn::clock_in(Origin::signed(BOB), nft_id));
         let after_balance = Assets::balance(nft_id, BOB);
         assert_eq!(before_balance + (5 + 50 + 70) / (3 * 10 + 1), after_balance);
+        assert_eq!(Assets::balance(nft_id, pot), 46);
 
         let last_clock_in_bucket = LastClockIn::<Test>::get(nft_id, DID_BOB);
         assert_eq!(last_clock_in_bucket, 1);
@@ -250,5 +255,40 @@ fn failed_to_clock_in_if_clocked_in_this_bucket() {
 
         System::set_block_number(20);
         assert_ok!(ClockIn::clock_in(Origin::signed(BOB), nft_id));
+    });
+}
+
+#[test]
+fn failed_to_clock_in_if_balance_not_enough() {
+    new_test_ext().execute_with(|| {
+        let nft_id = 1;
+        System::set_block_number(10);
+        <Assets as Create<<Test as frame_system::Config>::AccountId>>::create(
+            nft_id,
+            ALICE,
+            true,
+            One::one(),
+        )
+        .unwrap();
+        <Test as parami_nft::Config>::Assets::mint_into(nft_id, &ALICE, 100).unwrap();
+
+        assert_ok!(ClockIn::enable_clock_in(
+            Origin::signed(ALICE),
+            nft_id,
+            1,
+            1,
+            20,
+            b"test".to_vec(),
+            vec![b"tag1".to_vec(), b"tag2".to_vec(), b"tag3".to_vec()],
+            4,
+        ));
+
+        assert_ok!(ClockIn::clock_in(Origin::signed(BOB), nft_id));
+
+        System::set_block_number(20);
+        assert_noop!(
+            ClockIn::clock_in(Origin::signed(BOB), nft_id),
+            Error::<Test>::InsufficientToken
+        );
     });
 }
