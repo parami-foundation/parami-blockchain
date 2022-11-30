@@ -58,6 +58,7 @@ try-runtime-cli = { git = "https://github.com/paritytech/substrate.git", branch 
 
 pallet-contracts-rpc = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24' }
 pallet-mmr-rpc = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24' }
+pallet-asset-tx-payment = { git = "https://github.com/paritytech/substrate", branch = 'polkadot-v0.9.24' }
 pallet-transaction-payment = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24' }
 pallet-transaction-payment-rpc = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24' }
 
