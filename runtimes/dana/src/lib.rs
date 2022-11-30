@@ -981,7 +981,7 @@ construct_runtime!(
         Tag: parami_tag::{Pallet, Call, Storage, Config<T>, Event<T>} = 109,
         AssetManager: parami_assetmanager::{Pallet, Storage, Config<T>} = 110,
         Stake: parami_stake::{Pallet, Storage, Event<T>} = 111,
-        ClockIn: parami_clockin::{Pallet, Storage, Event<T>, Config<T>} = 112
+        ClockIn: parami_clockin::{Pallet, Call, Storage, Event<T>, Config<T>} = 112
     }
 );
 

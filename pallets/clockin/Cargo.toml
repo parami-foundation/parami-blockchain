@@ -26,7 +26,6 @@ version = '2.1.1'
 [dependencies]
 parami-did = { path = '../did', default-features = false }
 parami-nft= { path = '../nft', default-features = false }
-parami-tag = { path = '../tag', dafault-features = false }
 parami-traits= { path = '../traits', default-features = false }
 parami-primitives = { path = '../../primitives', default-features = false }
 
@@ -50,6 +49,7 @@ pallet-uniques = { git = 'https://github.com/paritytech/substrate', branch = 'po
 parami-assetmanager= { path='../assetmanager' }
 parami-ocw = { path='../ocw' }
 parami-swap = { path='../swap' }
+parami-tag = { path = '../tag', dafault-features = false }
 
 [features]
 default = ['std']
@@ -59,7 +59,6 @@ runtime-benchmarks = ['frame-benchmarking']
 std = [
     'parami-did/std',
     'parami-nft/std',
-    'parami-tag/std',
     'parami-traits/std',
     'parami-primitives/std',
 
