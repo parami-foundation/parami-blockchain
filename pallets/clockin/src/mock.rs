@@ -293,5 +293,19 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     .assimilate_storage(&mut t)
     .unwrap();
 
+    let tag1 = b"tag1".to_vec();
+    let tag2 = b"tag2".to_vec();
+
+    parami_tag::GenesisConfig::<Test> {
+        tag: vec![tag1.clone(), tag2.clone()],
+        personas: vec![
+            (DID_BOB, tag1, parami_tag::types::Score::new(5)),
+            (DID_BOB, tag2, parami_tag::types::Score::new(7)),
+        ],
+        ..Default::default()
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
+
     t.into()
 }

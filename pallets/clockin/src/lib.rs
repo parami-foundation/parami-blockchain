@@ -236,8 +236,7 @@ pub mod pallet {
             let meta = Metadata::<T>::get(nft_id).ok_or(Error::<T>::ClockInNotExists)?;
 
             let current_height = <frame_system::Pallet<T>>::block_number();
-            let last_clock_in_bucket: HeightOf<T> = LastClockIn::<T>::get(nft_id, did).into();
-            let clocked_in_height = meta.start_at + last_clock_in_bucket * meta.bucket_size;
+            let clocked_in_height = Self::clocked_in_block_num(nft_id, &did, &meta);
             ensure!(current_height >= clocked_in_height, Error::<T>::ClockedIn);
 
             let reward: BalanceOf<T> = Self::calculate_reward(nft_id, &did, &meta);
@@ -246,13 +245,8 @@ pub mod pallet {
 
             let reward = reward.min(free_balance);
             T::Assets::transfer(meta.asset_id, &meta.pot, &who, reward, false)?;
-
-            let clock_in_bucket = (current_height - meta.start_at) / meta.bucket_size;
-            let clock_in_bucket: u32 = clock_in_bucket
-                .try_into()
-                .map_err(|_| Error::<T>::NumberConversionError)?;
-            let clock_in_bucket = clock_in_bucket + 1;
-            LastClockIn::<T>::insert(nft_id, did, clock_in_bucket);
+            let clocked_in_bucket = Self::clocked_in_bucket(current_height, &meta)?;
+            LastClockIn::<T>::insert(nft_id, did, clocked_in_bucket);
 
             Self::deposit_event(Event::<T>::ClockIn(nft_id, did));
             Ok(())
@@ -260,8 +254,25 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        fn generate_reward_pot(nft_id: &NftOf<T>) -> AccountOf<T> {
+        pub fn generate_reward_pot(nft_id: &NftOf<T>) -> AccountOf<T> {
             return <T as crate::Config>::PalletId::get().into_sub_account_truncating(&nft_id);
+        }
+
+        fn clocked_in_block_num(nft_id: NftOf<T>, did: &DidOf<T>, meta: &MetaOf<T>) -> HeightOf<T> {
+            let last_clock_in_bucket: HeightOf<T> = LastClockIn::<T>::get(nft_id, did).into();
+
+            meta.start_at + last_clock_in_bucket * meta.bucket_size
+        }
+
+        fn clocked_in_bucket(
+            current_block: HeightOf<T>,
+            meta: &MetaOf<T>,
+        ) -> Result<u32, DispatchError> {
+            let clock_in_bucket = (current_block - meta.start_at) / meta.bucket_size;
+            let clock_in_bucket: u32 = clock_in_bucket
+                .try_into()
+                .map_err(|_| Error::<T>::NumberConversionError)?;
+            Ok(clock_in_bucket + 1)
         }
 
         fn calculate_reward(nft_id: NftOf<T>, did: &DidOf<T>, meta: &MetaOf<T>) -> BalanceOf<T> {
@@ -307,7 +318,7 @@ pub mod pallet {
             tag_hashes
         }
 
-        fn enabled_clockin(nft_id: NftOf<T>) -> bool {
+        pub fn enabled_clockin(nft_id: NftOf<T>) -> bool {
             let meta = Metadata::<T>::get(nft_id);
             if let Some(meta) = meta {
                 let balance = T::Assets::balance(meta.asset_id, &meta.pot);
