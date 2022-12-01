@@ -318,13 +318,13 @@ pub mod pallet {
             tag_hashes
         }
 
-        pub fn enabled_clockin(nft_id: NftOf<T>) -> bool {
+        pub fn is_clock_in_enabled(nft_id: NftOf<T>) -> Result<bool, DispatchError> {
             let meta = Metadata::<T>::get(nft_id);
             if let Some(meta) = meta {
                 let balance = T::Assets::balance(meta.asset_id, &meta.pot);
-                return balance > 0u32.into();
+                return Ok(balance > 0u32.into());
             } else {
-                return false;
+                return Ok(false);
             }
         }
     }

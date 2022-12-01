@@ -51,6 +51,7 @@ parami-traits = { path = '../../pallets/traits', default-features = false }
 parami-assetmanager = { path = '../../pallets/assetmanager', default-features = false }
 parami-stake = { path = '../../pallets/stake', default-features = false }
 parami-clockin = { path = '../../pallets/clockin', default-features = false }
+parami-clockin-runtime-api = { path = '../../pallets/clockin/runtime-api', default-features = false }
 
 # Substrate Dependencies
 ## Substrate Primitive Dependencies
@@ -134,6 +135,7 @@ std = [
     'parami-assetmanager/std',
     'parami-stake/std',
     'parami-clockin/std',
+    'parami-clockin-runtime-api/std',
 
     'sp-api/std',
     'sp-block-builder/std',

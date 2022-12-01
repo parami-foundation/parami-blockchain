@@ -1190,6 +1190,12 @@ impl_runtime_apis! {
         }
     }
 
+    impl parami_clockin_runtime_api::ClockInRuntimeApi<Block, NftId> for Runtime {
+       fn is_clock_in_enabled(nft_id: NftId) -> Result<bool, DispatchError> {
+            ClockIn::is_clock_in_enabled(nft_id)
+        }
+    }
+
     impl parami_swap_rpc_runtime_api::SwapRuntimeApi<Block, AssetId, Balance> for Runtime {
         fn dryly_add_liquidity(
             token_id: AssetId,
