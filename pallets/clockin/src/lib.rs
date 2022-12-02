@@ -318,14 +318,25 @@ pub mod pallet {
             tag_hashes
         }
 
-        pub fn is_clock_in_enabled(nft_id: NftOf<T>) -> Result<bool, DispatchError> {
+        pub fn get_clock_in_info(
+            nft_id: NftOf<T>,
+            did: &DidOf<T>,
+        ) -> Result<(bool, bool, BalanceOf<T>), DispatchError> {
             let meta = Metadata::<T>::get(nft_id);
             if let Some(meta) = meta {
                 let balance = T::Assets::balance(meta.asset_id, &meta.pot);
-                return Ok(balance > 0u32.into());
+                if balance == 0u32.into() {
+                    return Ok((false, false, 0u32.into()));
+                }
+
+                let current_height = <frame_system::Pallet<T>>::block_number();
+                let user_claimble =
+                    current_height > Self::clocked_in_block_num(nft_id, &did, &meta);
+                let reward = Self::calculate_reward(nft_id, &did, &meta).min(balance);
+                return Ok((true, user_claimble, reward));
             } else {
-                return Ok(false);
-            }
+                return Ok((false, false, 0u32.into()));
+            };
         }
     }
 

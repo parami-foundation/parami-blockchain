@@ -17,15 +17,19 @@ import assert from "node:assert"
         runtime: {
             ClockInRuntimeApi: [{
                 methods: {
-                    is_clock_in_enabled: {
-                        description: "check if clockin is enabled",
+                    get_clock_in_info: {
+                        description: "(enabled, claimable, token)",
                         params: [
                             {
                                 "name": "nft_id",
                                 "type": "u32"
+                            },
+                            {
+                                "name": "did",
+                                "type": "H160"
                             }
                         ],
-                        type: "u32"
+                        type: "(u8, bool, bool, u128)"
                     }
                 },
                 version: 1
@@ -113,11 +117,16 @@ import assert from "node:assert"
   spinnies.succeed('nft');
   spinnies.succeed('kol');
 
-    let isClockinEnabled = (await chain.call.clockInRuntimeApi.isClockInEnabled(nft)).toJSON();
-    assert.ok(isClockinEnabled == 0);
+    let clockInInfo = (await chain.call.clockInRuntimeApi.getClockInInfo(nft, did)).toJSON() as any[];
+    assert.ok(clockInInfo[1] == 0 && clockInInfo[2] == 0 && BigInt(clockInInfo[3]) == 0n);
+
     await submitUntilFinalized(chain, chain.tx.clockIn.enableClockIn(nft, 10, 5, 40, "test", [], 100), k);
-    isClockinEnabled = (await chain.call.clockInRuntimeApi.isClockInEnabled(nft)).toJSON();
-    assert.ok(isClockinEnabled && isClockinEnabled > 0);
+    clockInInfo = (await chain.call.clockInRuntimeApi.getClockInInfo(nft, did)).toJSON() as any[];
+    assert.ok(clockInInfo[1] > 0 && clockInInfo[2] > 0 && BigInt(clockInInfo[3]) == 40n);
+
+    await submitUntilFinalized(chain, chain.tx.clockIn.clockIn(nft), m);
+    clockInInfo = (await chain.call.clockInRuntimeApi.getClockInInfo(nft, did)).toJSON() as any[];
+    assert.ok(clockInInfo[1] > 0 && clockInInfo[2] == 0 && BigInt(clockInInfo[3]) == 40n);
 
   // 3. Prepare Advertiser
 

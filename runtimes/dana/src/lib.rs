@@ -1190,9 +1190,10 @@ impl_runtime_apis! {
         }
     }
 
-    impl parami_clockin_runtime_api::ClockInRuntimeApi<Block, NftId> for Runtime {
-       fn is_clock_in_enabled(nft_id: NftId) -> Result<bool, DispatchError> {
-            ClockIn::is_clock_in_enabled(nft_id)
+    impl parami_clockin_runtime_api::ClockInRuntimeApi<Block, NftId, DecentralizedId> for Runtime {
+       fn get_clock_in_info(nft_id: NftId, did: DecentralizedId) -> Result<(bool, bool, BalanceWrapper<Balance>), DispatchError> {
+           let (enabled, claimable, token_reward) = ClockIn::get_clock_in_info(nft_id, &did)?;
+           return Ok((enabled, claimable, token_reward.into()));
         }
     }
 
