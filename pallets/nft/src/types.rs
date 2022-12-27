@@ -19,6 +19,7 @@ pub struct Metadata<Did, AccountId, NftClassId, AssetId> {
     pub class_id: NftClassId,
     pub minted: bool,
     pub token_asset_id: AssetId,
+    pub sync_bid_only: bool,
 }
 
 #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, Default, TypeInfo)]
@@ -28,6 +29,7 @@ pub struct ImportTask<Did> {
     pub namespace: Vec<u8>,
     pub token: Vec<u8>,
     pub owner_address: Vec<u8>,
+    pub sync_bid_only: bool,
 }
 
 #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, Default, TypeInfo)]

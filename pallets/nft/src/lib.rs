@@ -307,6 +307,7 @@ pub mod pallet {
             token: Vec<u8>,
             owner_address: Vec<u8>,
             signature: parami_primitives::signature::Signature,
+            sync_bid_only: bool,
         ) -> DispatchResult {
             let (owner, _) = EnsureDid::<T>::ensure_origin(origin)?;
 
@@ -343,6 +344,7 @@ pub mod pallet {
                         namespace,
                         token,
                         owner_address: address,
+                        sync_bid_only,
                     },
                     deadline,
                     created,
@@ -357,7 +359,7 @@ pub mod pallet {
         pub fn kick(origin: OriginFor<T>) -> DispatchResult {
             let (owner, _) = EnsureDid::<T>::ensure_origin(origin)?;
 
-            Self::create(owner)?;
+            Self::create(owner, false)?;
 
             Ok(())
         }
@@ -425,7 +427,7 @@ pub mod pallet {
                 Error::<T>::Exists
             );
 
-            let id = Self::create(did)?;
+            let id = Self::create(did, false)?;
 
             <Ported<T>>::insert((network, namespace.clone(), token.clone()), id);
 
@@ -460,7 +462,7 @@ pub mod pallet {
             let task = task.unwrap();
 
             if validated {
-                let id = Self::create(task.task.owner)?;
+                let id = Self::create(task.task.owner, task.task.sync_bid_only)?;
 
                 <Ported<T>>::insert((network, namespace.clone(), token.clone()), id);
 
@@ -635,7 +637,7 @@ pub mod pallet {
             )) {
                 id
             } else {
-                let id = Self::create(did)?;
+                let id = Self::create(did, false)?;
 
                 <Ported<T>>::insert(
                     (
@@ -699,7 +701,7 @@ pub mod pallet {
         pub deposit: Vec<(NftOf<T>, BalanceOf<T>)>,
         pub deposits: Vec<(NftOf<T>, T::DecentralizedId, BalanceOf<T>)>,
         pub next_instance_id: NftOf<T>,
-        pub nfts: Vec<(NftOf<T>, T::DecentralizedId, bool)>,
+        pub nfts: Vec<(NftOf<T>, T::DecentralizedId, bool /*minted*/, bool /*sync_bid_only*/)>,
         pub externals: Vec<(NftOf<T>, Network, Vec<u8>, Vec<u8>, T::DecentralizedId)>,
         pub validate_endpoints: Vec<(Network, Vec<u8>)>,
     }
@@ -731,9 +733,10 @@ pub mod pallet {
                 <Deposits<T>>::insert(instance_id, did, deposit);
             }
 
-            for (id, owner, minted) in &self.nfts {
+            for (id, owner, minted, sync_bid_only) in &self.nfts {
                 let id = *id;
                 let minted = *minted;
+                let sync_bid_only = *sync_bid_only;
 
                 if id >= self.next_instance_id {
                     panic!("NFT ID must be less than next_instance_id");
@@ -749,6 +752,7 @@ pub mod pallet {
                         class_id: id,
                         token_asset_id: id,
                         minted,
+                        sync_bid_only,
                     },
                 );
 
@@ -816,7 +820,7 @@ pub mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    fn create(owner: DidOf<T>) -> Result<NftOf<T>, DispatchError> {
+    fn create(owner: DidOf<T>, sync_bid_only: bool) -> Result<NftOf<T>, DispatchError> {
         let id =
             <T as crate::Config>::AssetIdManager::next_id().map_err(|_e| Error::<T>::Overflow)?;
         let pot = Self::generate_claim_pot(&id);
@@ -831,6 +835,7 @@ impl<T: Config> Pallet<T> {
                 class_id: id,
                 token_asset_id: id,
                 minted: false,
+                sync_bid_only
             },
         );
 
