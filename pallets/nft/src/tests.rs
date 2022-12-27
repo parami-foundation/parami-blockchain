@@ -1,10 +1,10 @@
 use crate::{
-    mock::*, ClaimStartAt, ClaimedFragmentAmount, Deposit, Deposits, Error, External, IcoMeta,
-    IcoMetaOf, Metadata, Ported, Porting, Preferred,
+    mock::*, ClaimStartAt, Deposits, Error, External, IcoMeta, IcoMetaOf, Metadata, Ported,
+    Porting, Preferred,
 };
 
 use codec::Decode;
-use frame_support::{assert_noop, assert_ok, traits::fungibles::Mutate};
+use frame_support::{assert_noop, assert_ok};
 use parami_primitives::constants::DOLLARS;
 use parami_traits::{transferable::Transferable, types::Network, Swaps};
 use parking_lot::RwLock;
@@ -14,46 +14,19 @@ use sp_runtime::traits::AccountIdConversion;
 use sp_std::prelude::*;
 use std::sync::Arc;
 
-#[test]
-fn should_import() {
-    new_test_ext().execute_with(|| {
-        let namespace = NAMESPACE.to_vec();
-        let token = vec![0x02];
-        let did = DID_BOB;
+mod import {
+    use super::*;
 
-        let _result = Linker::insert_link(did, Network::Ethereum, "something".into(), did);
+    #[test]
+    fn should_import() {
+        new_test_ext().execute_with(|| {
+            let namespace = NAMESPACE.to_vec();
+            let token = vec![0x02];
+            let did = DID_BOB;
 
-        assert_ok!(Nft::port(
-            Origin::signed(BOB),
-            Network::Ethereum,
-            namespace.clone(),
-            token.clone(),
-            SIGNING_ETH_ADDR.into(),
-            SIGNATURE,
-            false,
-        ));
+            let _result = Linker::insert_link(did, Network::Ethereum, "something".into(), did);
 
-        let maybe_porting = <Porting<Test>>::get((Network::Ethereum, &namespace, &token));
-        assert_ne!(maybe_porting, None);
-
-        let porting = maybe_porting.unwrap();
-        assert_eq!(porting.task.owner, DID_BOB);
-        assert_eq!(porting.task.network, Network::Ethereum);
-        assert_eq!(porting.task.namespace, namespace);
-        assert_eq!(porting.task.token, token);
-        assert_eq!(porting.deadline, 5);
-        assert_eq!(porting.created, 0);
-    });
-}
-
-#[test]
-fn should_fail_when_imported() {
-    new_test_ext().execute_with(|| {
-        let namespace = NAMESPACE.to_vec();
-        let token = vec![0x01];
-
-        assert_noop!(
-            Nft::port(
+            assert_ok!(Nft::port(
                 Origin::signed(BOB),
                 Network::Ethereum,
                 namespace.clone(),
@@ -61,33 +34,86 @@ fn should_fail_when_imported() {
                 SIGNING_ETH_ADDR.into(),
                 SIGNATURE,
                 false,
-            ),
-            Error::<Test>::Exists
-        );
-    });
-}
+            ));
 
-#[test]
-fn should_fail_when_importing() {
-    new_test_ext().execute_with(|| {
-        let namespace = NAMESPACE.to_vec();
-        let token = vec![0x02];
-        let did = DID_BOB;
+            let maybe_porting = <Porting<Test>>::get((Network::Ethereum, &namespace, &token));
+            assert_ne!(maybe_porting, None);
 
-        let _result = Linker::insert_link(did, Network::Ethereum, "something".into(), did);
+            let porting = maybe_porting.unwrap();
+            assert_eq!(porting.task.owner, DID_BOB);
+            assert_eq!(porting.task.network, Network::Ethereum);
+            assert_eq!(porting.task.namespace, namespace);
+            assert_eq!(porting.task.token, token);
+            assert_eq!(porting.task.sync_bid_only, false);
+            assert_eq!(porting.deadline, 5);
+            assert_eq!(porting.created, 0);
+        });
+    }
 
-        assert_ok!(Nft::port(
-            Origin::signed(BOB),
-            Network::Ethereum,
-            namespace.clone(),
-            token.clone(),
-            SIGNING_ETH_ADDR.into(),
-            SIGNATURE,
-            false,
-        ));
+    #[test]
+    fn should_import_when_sync_bid_only() {
+        new_test_ext().execute_with(|| {
+            let namespace = NAMESPACE.to_vec();
+            let token = vec![0x02];
+            let did = DID_BOB;
 
-        assert_noop!(
-            Nft::port(
+            let _result = Linker::insert_link(did, Network::Ethereum, "something".into(), did);
+
+            assert_ok!(Nft::port(
+                Origin::signed(BOB),
+                Network::Ethereum,
+                namespace.clone(),
+                token.clone(),
+                SIGNING_ETH_ADDR.into(),
+                SIGNATURE,
+                true,
+            ));
+
+            let maybe_porting = <Porting<Test>>::get((Network::Ethereum, &namespace, &token));
+            assert_ne!(maybe_porting, None);
+
+            let porting = maybe_porting.unwrap();
+            assert_eq!(porting.task.owner, DID_BOB);
+            assert_eq!(porting.task.network, Network::Ethereum);
+            assert_eq!(porting.task.namespace, namespace);
+            assert_eq!(porting.task.token, token);
+            assert_eq!(porting.task.sync_bid_only, true);
+            assert_eq!(porting.deadline, 5);
+            assert_eq!(porting.created, 0);
+        });
+    }
+
+    #[test]
+    fn should_not_import() {
+        new_test_ext().execute_with(|| {
+            let namespace = NAMESPACE.to_vec();
+            let token = vec![0x01];
+
+            assert_noop!(
+                Nft::port(
+                    Origin::signed(BOB),
+                    Network::Ethereum,
+                    namespace.clone(),
+                    token.clone(),
+                    SIGNING_ETH_ADDR.into(),
+                    SIGNATURE,
+                    false,
+                ),
+                Error::<Test>::Exists
+            );
+        });
+    }
+
+    #[test]
+    fn should_not_port_when_importing() {
+        new_test_ext().execute_with(|| {
+            let namespace = NAMESPACE.to_vec();
+            let token = vec![0x02];
+            let did = DID_BOB;
+
+            let _result = Linker::insert_link(did, Network::Ethereum, "something".into(), did);
+
+            assert_ok!(Nft::port(
                 Origin::signed(BOB),
                 Network::Ethereum,
                 namespace.clone(),
@@ -95,10 +121,22 @@ fn should_fail_when_importing() {
                 SIGNING_ETH_ADDR.into(),
                 SIGNATURE,
                 false,
-            ),
-            Error::<Test>::Exists
-        );
-    });
+            ));
+
+            assert_noop!(
+                Nft::port(
+                    Origin::signed(BOB),
+                    Network::Ethereum,
+                    namespace.clone(),
+                    token.clone(),
+                    SIGNING_ETH_ADDR.into(),
+                    SIGNATURE,
+                    false,
+                ),
+                Error::<Test>::Exists
+            );
+        });
+    }
 }
 
 #[test]
@@ -173,93 +211,96 @@ fn elevate_token_price_to_target(target_ad3_amount_per_1000_token: u128) -> u128
     ad3_balance_of_bob_before_buying_token - ad3_balance_of_bob_after_buying_token
 }
 
-#[test]
-fn all_roles_claim_should_success_when_time_elapsed_100_percent() {
-    new_test_ext().execute_with(|| {
-        let nft = Nft::preferred(DID_ALICE).unwrap();
+mod claim {
+    use super::*;
+    #[test]
+    fn should_claim_for_all_roles_when_time_elapsed_100_percent() {
+        new_test_ext().execute_with(|| {
+            let nft = Nft::preferred(DID_ALICE).unwrap();
 
-        assert_ok!(Nft::mint_nft_power(
-            Origin::signed(ALICE),
-            nft,
-            b"Test Token".to_vec(),
-            b"XTT".to_vec(),
-            1_000_000 * DOLLARS
-        ));
+            assert_ok!(Nft::mint_nft_power(
+                Origin::signed(ALICE),
+                nft,
+                b"Test Token".to_vec(),
+                b"XTT".to_vec(),
+                1_000_000 * DOLLARS
+            ));
 
-        assert_ok!(Nft::start_ico(
-            Origin::signed(ALICE),
-            nft,
-            3000 * DOLLARS,
-            1_000_000 * DOLLARS
-        ));
+            assert_ok!(Nft::start_ico(
+                Origin::signed(ALICE),
+                nft,
+                3000 * DOLLARS,
+                1_000_000 * DOLLARS
+            ));
 
-        assert_ok!(Nft::participate_ico(
-            Origin::signed(BOB),
-            nft,
-            666666666666666666666666
-        ));
-        assert_ok!(Nft::participate_ico(
-            Origin::signed(CHARLIE),
-            nft,
-            333333333333333333333333
-        ));
-        assert_ok!(Nft::end_ico(Origin::signed(ALICE), nft));
+            assert_ok!(Nft::participate_ico(
+                Origin::signed(BOB),
+                nft,
+                666666666666666666666666
+            ));
+            assert_ok!(Nft::participate_ico(
+                Origin::signed(CHARLIE),
+                nft,
+                333333333333333333333333
+            ));
+            assert_ok!(Nft::end_ico(Origin::signed(ALICE), nft));
 
-        System::set_block_number(5);
+            System::set_block_number(5);
 
-        assert_ok!(Nft::claim(Origin::signed(BOB), nft));
-        assert_ok!(Nft::claim(Origin::signed(CHARLIE), nft));
+            assert_ok!(Nft::claim(Origin::signed(BOB), nft));
+            assert_ok!(Nft::claim(Origin::signed(CHARLIE), nft));
 
-        assert_eq!(Assets::balance(nft, &BOB), 666666666666666666666333);
-        assert_eq!(Assets::balance(nft, &CHARLIE), 333333333333333333333000);
+            assert_eq!(Assets::balance(nft, &BOB), 666666666666666666666333);
+            assert_eq!(Assets::balance(nft, &CHARLIE), 333333333333333333333000);
 
-        assert_eq!(<Deposits<Test>>::get(nft, &DID_BOB), None);
-        assert_eq!(<Deposits<Test>>::get(nft, &DID_CHARLIE), None);
-    });
-}
+            assert_eq!(<Deposits<Test>>::get(nft, &DID_BOB), None);
+            assert_eq!(<Deposits<Test>>::get(nft, &DID_CHARLIE), None);
+        });
+    }
 
-#[test]
-fn claim_should_success_when_claim_multi_times_in_same_block() {
-    new_test_ext().execute_with(|| {
-        let nft = Nft::preferred(DID_ALICE).unwrap();
+    #[test]
+    fn claim_should_success_when_claim_multi_times_in_same_block() {
+        new_test_ext().execute_with(|| {
+            let nft = Nft::preferred(DID_ALICE).unwrap();
 
-        assert_ok!(Nft::mint_nft_power(
-            Origin::signed(ALICE),
-            nft,
-            b"Test Token".to_vec(),
-            b"XTT".to_vec(),
-            1_000_000 * DOLLARS
-        ));
+            assert_ok!(Nft::mint_nft_power(
+                Origin::signed(ALICE),
+                nft,
+                b"Test Token".to_vec(),
+                b"XTT".to_vec(),
+                1_000_000 * DOLLARS
+            ));
 
-        assert_ok!(Nft::start_ico(
-            Origin::signed(ALICE),
-            nft,
-            3000 * DOLLARS,
-            1_000_000 * DOLLARS
-        ));
+            assert_ok!(Nft::start_ico(
+                Origin::signed(ALICE),
+                nft,
+                3000 * DOLLARS,
+                1_000_000 * DOLLARS
+            ));
 
-        assert_ok!(Nft::participate_ico(
-            Origin::signed(BOB),
-            nft,
-            2000 * DOLLARS
-        ));
-        assert_ok!(Nft::participate_ico(
-            Origin::signed(CHARLIE),
-            nft,
-            1000 * DOLLARS
-        ));
-        assert_ok!(Nft::end_ico(Origin::signed(ALICE), nft));
+            assert_ok!(Nft::participate_ico(
+                Origin::signed(BOB),
+                nft,
+                2000 * DOLLARS
+            ));
+            assert_ok!(Nft::participate_ico(
+                Origin::signed(CHARLIE),
+                nft,
+                1000 * DOLLARS
+            ));
+            assert_ok!(Nft::end_ico(Origin::signed(ALICE), nft));
 
-        System::set_block_number(1);
-        assert_ok!(Nft::claim(Origin::signed(BOB), nft));
-        assert_eq!(Assets::balance(nft, &BOB), 400 * DOLLARS);
+            System::set_block_number(1);
+            assert_ok!(Nft::claim(Origin::signed(BOB), nft));
+            assert_eq!(Assets::balance(nft, &BOB), 400 * DOLLARS);
 
-        assert_ok!(Nft::claim(Origin::signed(BOB), nft));
-        assert_eq!(Assets::balance(nft, &BOB), 400 * DOLLARS);
+            assert_ok!(Nft::claim(Origin::signed(BOB), nft));
+            assert_eq!(Assets::balance(nft, &BOB), 400 * DOLLARS);
 
-        assert_ok!(Nft::claim(Origin::signed(BOB), nft));
-        assert_eq!(Assets::balance(nft, &BOB), 400 * DOLLARS);
-    });
+            assert_ok!(Nft::claim(Origin::signed(BOB), nft));
+            assert_eq!(Assets::balance(nft, &BOB), 400 * DOLLARS);
+        });
+    }
 }
 
 fn mock_validate_request(
@@ -329,165 +370,206 @@ fn should_success_when_validate_etherum_token_owner() {
     );
 }
 
-#[test]
-fn should_fail_when_task_owner_not_token_owner() {
-    let ether_endpoint = "http://etherum.endpoint/example";
-    let _links: &[Vec<u8>] = &[[0; 32].into()];
-    let contract_address = b"contractaddress";
-    let token = 546u64;
+mod ocw {
+    use super::*;
+    #[test]
+    fn should_fail_when_task_owner_not_token_owner() {
+        let ether_endpoint = "http://etherum.endpoint/example";
+        let _links: &[Vec<u8>] = &[[0; 32].into()];
+        let contract_address = b"contractaddress";
+        let token = 546u64;
 
-    let body = Nft::construct_request_body(contract_address, &token.to_be_bytes());
-    let res = r#"{"jsonrpc":"2.0","id":1,"result":"0x000000000000000000000000dbd04424318d1e06b34259add64bf10a8eb45a87"}"#;
+        let body = Nft::construct_request_body(contract_address, &token.to_be_bytes());
+        let res = r#"{"jsonrpc":"2.0","id":1,"result":"0x000000000000000000000000dbd04424318d1e06b34259add64bf10a8eb45a87"}"#;
 
-    offchain_execute(
-        vec![mock_validate_request(ether_endpoint.into(), body, res)],
-        |_| {
-            let result = Nft::ocw_validate_etherum_token_owner(
-                ether_endpoint,
-                b"contractaddress",
-                &token.to_be_bytes(),
-                &[0xee; 20],
-            );
+        offchain_execute(
+            vec![mock_validate_request(ether_endpoint.into(), body, res)],
+            |_| {
+                let result = Nft::ocw_validate_etherum_token_owner(
+                    ether_endpoint,
+                    b"contractaddress",
+                    &token.to_be_bytes(),
+                    &[0xee; 20],
+                );
 
-            assert_noop!(result, Error::<Test>::NotTokenOwner);
-        },
-    );
+                assert_noop!(result, Error::<Test>::NotTokenOwner);
+            },
+        );
+    }
+
+    // TODO: we should test with response with status code 400, however, substrate doesn't support mocking status code for now.
+    #[test]
+    fn should_fail_when_server_response_not_expected() {
+        let ether_endpoint = "http://etherum.endpoint/example";
+        let _links: &[Vec<u8>] = &[[0; 32].into()];
+        let contract_address = b"contractaddress";
+        let token = 546u64;
+
+        let body = Nft::construct_request_body(contract_address, &token.to_be_bytes());
+        let res = r#"{"jsonrpc":"2.0","id":1,"result":"invalid argument: xxxx"}"#;
+
+        offchain_execute(
+            vec![mock_validate_request(ether_endpoint.into(), body, res)],
+            |_| {
+                let result = Nft::ocw_validate_etherum_token_owner(
+                    ether_endpoint,
+                    b"contractaddress",
+                    &token.to_be_bytes(),
+                    &SIGNING_ETH_ADDR,
+                );
+
+                assert_noop!(result, Error::<Test>::OcwParseError);
+            },
+        );
+    }
 }
 
-// TODO: we should test with response with status code 400, however, substrate doesn't support mocking status code for now.
-#[test]
-fn should_fail_when_server_response_not_expected() {
-    let ether_endpoint = "http://etherum.endpoint/example";
-    let _links: &[Vec<u8>] = &[[0; 32].into()];
-    let contract_address = b"contractaddress";
-    let token = 546u64;
+mod submit_porting {
+    use super::*;
 
-    let body = Nft::construct_request_body(contract_address, &token.to_be_bytes());
-    let res = r#"{"jsonrpc":"2.0","id":1,"result":"invalid argument: xxxx"}"#;
+    #[test]
+    fn should_import_nft_by_ocw() {
+        let ether_endpoint = "http://etherum.endpoint/example";
+        let profile: Vec<u8> = vec![
+            219, 208, 68, 36, 49, 141, 30, 6, 179, 66, 89, 173, 214, 75, 241, 10, 142, 180, 90, 135,
+        ];
+        let contract_address = b"contractaddress";
+        let token = 546u64.to_be_bytes();
 
-    offchain_execute(
-        vec![mock_validate_request(ether_endpoint.into(), body, res)],
-        |_| {
-            let result = Nft::ocw_validate_etherum_token_owner(
-                ether_endpoint,
-                b"contractaddress",
-                &token.to_be_bytes(),
-                &SIGNING_ETH_ADDR,
-            );
+        let body = Nft::construct_request_body(contract_address, &token);
+        let res = r#"{"jsonrpc":"2.0","id":1,"result":"0x000000000000000000000000dbd04424318d1e06b34259add64bf10a8eb45a87"}"#;
 
-            assert_noop!(result, Error::<Test>::OcwParseError);
-        },
-    );
-}
+        offchain_execute(
+            vec![mock_validate_request(ether_endpoint.into(), body, res)],
+            |pool_state| {
+                let namespace = contract_address.to_vec();
+                let did = DID_BOB;
 
-#[test]
-fn should_import_nft_by_ocw() {
-    let ether_endpoint = "http://etherum.endpoint/example";
-    let profile: Vec<u8> = vec![
-        219, 208, 68, 36, 49, 141, 30, 6, 179, 66, 89, 173, 214, 75, 241, 10, 142, 180, 90, 135,
-    ];
-    let contract_address = b"contractaddress";
-    let token = 546u64.to_be_bytes();
+                let _result = Linker::insert_link(did, Network::Ethereum, profile, did);
 
-    let body = Nft::construct_request_body(contract_address, &token);
-    let res = r#"{"jsonrpc":"2.0","id":1,"result":"0x000000000000000000000000dbd04424318d1e06b34259add64bf10a8eb45a87"}"#;
+                assert_ok!(Nft::port(
+                    Origin::signed(BOB),
+                    Network::Ethereum,
+                    namespace.clone(),
+                    token.into(),
+                    SIGNING_ETH_ADDR.into(),
+                    SIGNATURE,
+                    false
+                ));
 
-    offchain_execute(
-        vec![mock_validate_request(ether_endpoint.into(), body, res)],
-        |pool_state| {
-            let namespace = contract_address.to_vec();
+                assert_ok!(Nft::ocw_begin_block(System::block_number()));
+
+                let tx = pool_state.write().transactions.pop().unwrap();
+
+                assert!(pool_state.read().transactions.is_empty());
+
+                let tx = Extrinsic::decode(&mut &*tx).unwrap();
+
+                assert_eq!(tx.signature, None);
+                assert_eq!(
+                    tx.call,
+                    Call::Nft(crate::Call::submit_porting {
+                        did: DID_BOB,
+                        network: Network::Ethereum,
+                        namespace: contract_address.to_vec(),
+                        token: token.to_vec(),
+                        validated: true
+                    })
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn should_submit_porting() {
+        new_test_ext().execute_with(|| {
+            let namespace = NAMESPACE.to_vec();
+            let token = vec![0x22];
             let did = DID_BOB;
 
-            let _result = Linker::insert_link(did, Network::Ethereum, profile, did);
+            let _result = Linker::insert_link(did, Network::Ethereum, "something".into(), did);
 
             assert_ok!(Nft::port(
                 Origin::signed(BOB),
                 Network::Ethereum,
                 namespace.clone(),
-                token.into(),
+                token.clone(),
                 SIGNING_ETH_ADDR.into(),
                 SIGNATURE,
-                false
+                false,
+            ));
+            assert_ok!(Nft::submit_porting(
+                frame_system::RawOrigin::None.into(),
+                DID_BOB,
+                Network::Ethereum,
+                namespace.clone(),
+                token.clone(),
+                true,
             ));
 
-            assert_ok!(Nft::ocw_begin_block(System::block_number()));
+            let token: &Vec<u8> = &token.into();
+            assert!(<Porting<Test>>::get((Network::Ethereum, &namespace, token)).is_none());
 
-            let tx = pool_state.write().transactions.pop().unwrap();
-
-            assert!(pool_state.read().transactions.is_empty());
-
-            let tx = Extrinsic::decode(&mut &*tx).unwrap();
-
-            assert_eq!(tx.signature, None);
             assert_eq!(
-                tx.call,
-                Call::Nft(crate::Call::submit_porting {
-                    did: DID_BOB,
-                    network: Network::Ethereum,
-                    namespace: contract_address.to_vec(),
-                    token: token.to_vec(),
-                    validated: true
-                })
+                <Ported<Test>>::get((Network::Ethereum, &namespace, token))
+                    .expect("should be ported"),
+                // genesis config creates the first token, so we got 2 here.
+                NEXT_INSTANCE_ID,
             );
-        },
-    );
-}
 
-#[test]
-fn should_sumbit_porting() {
-    new_test_ext().execute_with(|| {
-        let namespace = NAMESPACE.to_vec();
-        let token = vec![0x22];
-        let did = DID_BOB;
+            let external =
+                <External<Test>>::get(NEXT_INSTANCE_ID).expect("external should have data");
+            assert_eq!(external.owner, did);
+            assert_eq!(external.network, Network::Ethereum);
+            assert_eq!(external.namespace, namespace);
+            assert_eq!(external.token, token.clone());
 
-        let _result = Linker::insert_link(did, Network::Ethereum, "something".into(), did);
+            let subaccount_id = <Test as crate::Config>::PalletId::get()
+                .into_sub_account_truncating(NEXT_INSTANCE_ID);
 
-        assert_ok!(Nft::port(
-            Origin::signed(BOB),
-            Network::Ethereum,
-            namespace.clone(),
-            token.clone(),
-            SIGNING_ETH_ADDR.into(),
-            SIGNATURE,
-            false,
-        ));
-        assert_ok!(Nft::submit_porting(
-            frame_system::RawOrigin::None.into(),
-            DID_BOB,
-            Network::Ethereum,
-            namespace.clone(),
-            token.clone(),
-            true,
-        ));
+            let metadata = <Metadata<Test>>::get(NEXT_INSTANCE_ID).expect("meta should have data");
+            assert_eq!(metadata.owner, did);
+            assert_eq!(metadata.class_id, NEXT_INSTANCE_ID);
+            assert_eq!(metadata.pot, subaccount_id);
+            assert_eq!(metadata.minted, false);
+            assert_eq!(metadata.token_asset_id, NEXT_INSTANCE_ID);
 
-        let token: &Vec<u8> = &token.into();
-        assert!(<Porting<Test>>::get((Network::Ethereum, &namespace, token)).is_none());
+            let preferred = <Preferred<Test>>::get(DID_BOB).expect("prefered should have data");
+            assert_eq!(preferred, NEXT_INSTANCE_ID);
+        });
+    }
 
-        assert_eq!(
-            <Ported<Test>>::get((Network::Ethereum, &namespace, token)).expect("should be ported"),
-            // genesis config creates the first token, so we got 2 here.
-            NEXT_INSTANCE_ID,
-        );
+    #[test]
+    fn should_submit_porting_for_sync_bid_only() {
+        new_test_ext().execute_with(|| {
+            let namespace = NAMESPACE.to_vec();
+            let token = vec![0x22];
+            let did = DID_BOB;
 
-        let external = <External<Test>>::get(NEXT_INSTANCE_ID).expect("external should have data");
-        assert_eq!(external.owner, did);
-        assert_eq!(external.network, Network::Ethereum);
-        assert_eq!(external.namespace, namespace);
-        assert_eq!(external.token, token.clone());
+            let _result = Linker::insert_link(did, Network::Ethereum, "something".into(), did);
 
-        let subaccount_id =
-            <Test as crate::Config>::PalletId::get().into_sub_account_truncating(NEXT_INSTANCE_ID);
+            assert_ok!(Nft::port(
+                Origin::signed(BOB),
+                Network::Ethereum,
+                namespace.clone(),
+                token.clone(),
+                SIGNING_ETH_ADDR.into(),
+                SIGNATURE,
+                true,
+            ));
+            assert_ok!(Nft::submit_porting(
+                frame_system::RawOrigin::None.into(),
+                DID_BOB,
+                Network::Ethereum,
+                namespace.clone(),
+                token.clone(),
+                true,
+            ));
 
-        let metadata = <Metadata<Test>>::get(NEXT_INSTANCE_ID).expect("meta should have data");
-        assert_eq!(metadata.owner, did);
-        assert_eq!(metadata.class_id, NEXT_INSTANCE_ID);
-        assert_eq!(metadata.pot, subaccount_id);
-        assert_eq!(metadata.minted, false);
-        assert_eq!(metadata.token_asset_id, NEXT_INSTANCE_ID);
-
-        let preferred = <Preferred<Test>>::get(DID_BOB).expect("prefered should have data");
-        assert_eq!(preferred, NEXT_INSTANCE_ID);
-    });
+            let metadata = <Metadata<Test>>::get(NEXT_INSTANCE_ID).expect("meta should have data");
+            assert_eq!(metadata.sync_bid_only, true);
+        });
+    }
 }
 
 #[test]
@@ -523,29 +605,78 @@ fn should_transfer_all_assets() {
     });
 }
 
-#[test]
-fn should_mint_asset() {
-    use frame_support::traits::tokens::fungibles::Inspect;
-    new_test_ext().execute_with(|| {
-        let nft = Nft::preferred(DID_ALICE).unwrap();
+mod mint_nft_power {
+    use super::*;
+    #[test]
+    fn should_mint_asset() {
+        use frame_support::traits::tokens::fungibles::Inspect;
+        new_test_ext().execute_with(|| {
+            let nft = Nft::preferred(DID_ALICE).unwrap();
 
-        assert_eq!(Assets::balance(nft, &ALICE), 0);
-        let result = Nft::mint_nft_power(
-            Origin::signed(ALICE),
-            nft,
-            b"Test Token".to_vec(),
-            b"TT".to_vec(),
-            200,
-        );
-        assert_ok!(result);
-        assert_eq!(Assets::total_issuance(nft), 200);
-        assert_eq!(Assets::balance(nft, ALICE), 200);
-    });
+            assert_eq!(Assets::balance(nft, &ALICE), 0);
+            let result = Nft::mint_nft_power(
+                Origin::signed(ALICE),
+                nft,
+                b"Test Token".to_vec(),
+                b"TT".to_vec(),
+                200,
+            );
+            assert_ok!(result);
+            assert_eq!(Assets::total_issuance(nft), 200);
+            assert_eq!(Assets::balance(nft, ALICE), 200);
+        });
+    }
+
+    #[test]
+    fn should_not_mint_nft_power_if_ico_with_wrong_params() {
+        new_test_ext().execute_with(|| {
+            assert_noop!(
+                Nft::mint_nft_power(
+                    Origin::signed(ALICE),
+                    10086,
+                    b"TT".to_vec(),
+                    b"TT".to_vec(),
+                    100,
+                ),
+                Error::<Test>::NotExists,
+            );
+
+            let nft = Nft::preferred(DID_ALICE).unwrap();
+            assert_noop!(
+                Nft::mint_nft_power(
+                    Origin::signed(BOB),
+                    nft,
+                    b"TT".to_vec(),
+                    b"TT".to_vec(),
+                    100,
+                ),
+                Error::<Test>::NotTokenOwner,
+            );
+
+            assert_ok!(Nft::mint_nft_power(
+                Origin::signed(ALICE),
+                nft,
+                b"TT".to_vec(),
+                b"TT".to_vec(),
+                100,
+            ));
+
+            assert_noop!(
+                Nft::mint_nft_power(
+                    Origin::signed(ALICE),
+                    nft,
+                    b"TT".to_vec(),
+                    b"TT".to_vec(),
+                    100,
+                ),
+                Error::<Test>::Minted,
+            );
+        });
+    }
 }
 
 #[test]
 fn should_start_ico() {
-    use frame_support::traits::tokens::fungibles::Inspect;
     new_test_ext().execute_with(|| {
         let nft = Nft::preferred(DID_ALICE).unwrap();
 
@@ -568,59 +699,121 @@ fn should_start_ico() {
     });
 }
 
-#[test]
-fn should_participate_ico() {
-    new_test_ext().execute_with(|| {
-        let nft = Nft::preferred(DID_ALICE).unwrap();
+mod participate_ico {
+    use super::*;
 
-        let result = Nft::mint_nft_power(
-            Origin::signed(ALICE),
-            nft,
-            b"Test Token".to_vec(),
-            b"TT".to_vec(),
-            200,
-        );
-        assert_ok!(result);
-        assert_ok!(Nft::start_ico(Origin::signed(ALICE), nft, 100, 50));
+    #[test]
+    fn should_participate_ico() {
+        new_test_ext().execute_with(|| {
+            let nft = Nft::preferred(DID_ALICE).unwrap();
 
-        let meta = IcoMetaOf::<Test>::get(nft).unwrap();
+            let result = Nft::mint_nft_power(
+                Origin::signed(ALICE),
+                nft,
+                b"Test Token".to_vec(),
+                b"TT".to_vec(),
+                200,
+            );
+            assert_ok!(result);
+            assert_ok!(Nft::start_ico(Origin::signed(ALICE), nft, 100, 50));
 
-        assert_eq!(Assets::balance(nft, meta.pot), 50);
+            let meta = IcoMetaOf::<Test>::get(nft).unwrap();
 
-        assert_eq!(Balances::free_balance(ALICE), 3000000 * DOLLARS);
-        assert_eq!(Balances::free_balance(BOB), 3000000 * DOLLARS);
-        assert_ok!(Nft::participate_ico(Origin::signed(BOB), nft, 50));
-        assert_eq!(Balances::free_balance(BOB), 3000000 * DOLLARS - 100);
-        assert_eq!(Balances::free_balance(ALICE), 3000000 * DOLLARS + 100);
+            assert_eq!(Assets::balance(nft, meta.pot), 50);
 
-        assert_eq!(Assets::balance(nft, meta.pot), 50);
-    });
+            assert_eq!(Balances::free_balance(ALICE), 3000000 * DOLLARS);
+            assert_eq!(Balances::free_balance(BOB), 3000000 * DOLLARS);
+            assert_ok!(Nft::participate_ico(Origin::signed(BOB), nft, 50));
+            assert_eq!(Balances::free_balance(BOB), 3000000 * DOLLARS - 100);
+            assert_eq!(Balances::free_balance(ALICE), 3000000 * DOLLARS + 100);
+
+            assert_eq!(Assets::balance(nft, meta.pot), 50);
+        });
+    }
+
+    #[test]
+    fn should_not_participate_ico_if_with_wrong_params() {
+        new_test_ext().execute_with(|| {
+            let nft = Nft::preferred(DID_ALICE).unwrap();
+            assert_noop!(
+                Nft::participate_ico(Origin::signed(ALICE), nft, 50),
+                Error::<Test>::NotExists,
+            );
+
+            assert_ok!(Nft::mint_nft_power(
+                Origin::signed(ALICE),
+                nft,
+                b"TT".to_vec(),
+                b"TT".to_vec(),
+                100,
+            ));
+
+            assert_ok!(Nft::start_ico(Origin::signed(ALICE), nft, 50, 50));
+            assert_noop!(
+                Nft::participate_ico(Origin::signed(ALICE), nft, 150),
+                Error::<Test>::InsufficientToken
+            );
+            assert_ok!(Nft::end_ico(Origin::signed(ALICE), nft));
+
+            assert_noop!(
+                Nft::participate_ico(Origin::signed(ALICE), nft, 50),
+                Error::<Test>::Deadline,
+            );
+        });
+    }
 }
 
-#[test]
-fn should_end_ico() {
-    new_test_ext().execute_with(|| {
-        let nft = Nft::preferred(DID_ALICE).unwrap();
+mod end_ico {
+    use super::*;
+    #[test]
+    fn should_end_ico() {
+        new_test_ext().execute_with(|| {
+            let nft = Nft::preferred(DID_ALICE).unwrap();
 
-        let result = Nft::mint_nft_power(
-            Origin::signed(ALICE),
-            nft,
-            b"Test Token".to_vec(),
-            b"TT".to_vec(),
-            200,
-        );
-        assert_ok!(result);
-        assert_ok!(Nft::start_ico(Origin::signed(ALICE), nft, 50, 100));
-        assert_ok!(Nft::participate_ico(Origin::signed(BOB), nft, 50));
-        assert_ok!(Nft::end_ico(Origin::signed(ALICE), nft));
+            let result = Nft::mint_nft_power(
+                Origin::signed(ALICE),
+                nft,
+                b"Test Token".to_vec(),
+                b"TT".to_vec(),
+                200,
+            );
+            assert_ok!(result);
+            assert_ok!(Nft::start_ico(Origin::signed(ALICE), nft, 50, 100));
+            assert_ok!(Nft::participate_ico(Origin::signed(BOB), nft, 50));
+            assert_ok!(Nft::end_ico(Origin::signed(ALICE), nft));
 
-        let ico_meta = IcoMetaOf::<Test>::get(nft).unwrap();
-        let meta = Metadata::<Test>::get(nft).unwrap();
-        let block_num = ClaimStartAt::<Test>::get(nft).unwrap();
-        assert_eq!(ico_meta.done, true);
-        assert_eq!(Assets::balance(nft, meta.pot), 50);
-        assert_eq!(block_num, 0);
-    });
+            let ico_meta = IcoMetaOf::<Test>::get(nft).unwrap();
+            let meta = Metadata::<Test>::get(nft).unwrap();
+            let block_num = ClaimStartAt::<Test>::get(nft).unwrap();
+            assert_eq!(ico_meta.done, true);
+            assert_eq!(Assets::balance(nft, meta.pot), 50);
+            assert_eq!(block_num, 0);
+        });
+    }
+
+    #[test]
+    fn should_not_end_ico_if_with_wrong_params() {
+        new_test_ext().execute_with(|| {
+            let nft = Nft::preferred(DID_ALICE).unwrap();
+            assert_noop!(
+                Nft::end_ico(Origin::signed(ALICE), nft),
+                Error::<Test>::NotExists
+            );
+
+            assert_ok!(Nft::mint_nft_power(
+                Origin::signed(ALICE),
+                nft,
+                b"TT".to_vec(),
+                b"TT".to_vec(),
+                100,
+            ));
+
+            assert_noop!(
+                Nft::end_ico(Origin::signed(BOB), nft),
+                Error::<Test>::NotTokenOwner
+            );
+        });
+    }
 }
 
 #[test]
@@ -703,108 +896,6 @@ fn should_calculate_price_correct() {
         .unwrap();
 
         assert_eq!(required_token, 0);
-    });
-}
-
-#[test]
-fn should_failed_if_ico_with_wrong_params() {
-    new_test_ext().execute_with(|| {
-        assert_noop!(
-            Nft::mint_nft_power(
-                Origin::signed(ALICE),
-                10086,
-                b"TT".to_vec(),
-                b"TT".to_vec(),
-                100,
-            ),
-            Error::<Test>::NotExists,
-        );
-
-        let nft = Nft::preferred(DID_ALICE).unwrap();
-        assert_noop!(
-            Nft::mint_nft_power(
-                Origin::signed(BOB),
-                nft,
-                b"TT".to_vec(),
-                b"TT".to_vec(),
-                100,
-            ),
-            Error::<Test>::NotTokenOwner,
-        );
-
-        assert_ok!(Nft::mint_nft_power(
-            Origin::signed(ALICE),
-            nft,
-            b"TT".to_vec(),
-            b"TT".to_vec(),
-            100,
-        ));
-
-        assert_noop!(
-            Nft::mint_nft_power(
-                Origin::signed(ALICE),
-                nft,
-                b"TT".to_vec(),
-                b"TT".to_vec(),
-                100,
-            ),
-            Error::<Test>::Minted,
-        );
-    });
-}
-
-#[test]
-fn should_failed_to_participate_ico_if_with_wrong_params() {
-    new_test_ext().execute_with(|| {
-        let nft = Nft::preferred(DID_ALICE).unwrap();
-        assert_noop!(
-            Nft::participate_ico(Origin::signed(ALICE), nft, 50),
-            Error::<Test>::NotExists,
-        );
-
-        assert_ok!(Nft::mint_nft_power(
-            Origin::signed(ALICE),
-            nft,
-            b"TT".to_vec(),
-            b"TT".to_vec(),
-            100,
-        ));
-
-        assert_ok!(Nft::start_ico(Origin::signed(ALICE), nft, 50, 50));
-        assert_noop!(
-            Nft::participate_ico(Origin::signed(ALICE), nft, 150),
-            Error::<Test>::InsufficientToken
-        );
-        assert_ok!(Nft::end_ico(Origin::signed(ALICE), nft));
-
-        assert_noop!(
-            Nft::participate_ico(Origin::signed(ALICE), nft, 50),
-            Error::<Test>::Deadline,
-        );
-    });
-}
-
-#[test]
-fn should_failed_to_end_ico_if_with_wrong_params() {
-    new_test_ext().execute_with(|| {
-        let nft = Nft::preferred(DID_ALICE).unwrap();
-        assert_noop!(
-            Nft::end_ico(Origin::signed(ALICE), nft),
-            Error::<Test>::NotExists
-        );
-
-        assert_ok!(Nft::mint_nft_power(
-            Origin::signed(ALICE),
-            nft,
-            b"TT".to_vec(),
-            b"TT".to_vec(),
-            100,
-        ));
-
-        assert_noop!(
-            Nft::end_ico(Origin::signed(BOB), nft),
-            Error::<Test>::NotTokenOwner
-        );
     });
 }
 
