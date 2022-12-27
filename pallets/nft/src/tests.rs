@@ -30,6 +30,7 @@ fn should_import() {
             token.clone(),
             SIGNING_ETH_ADDR.into(),
             SIGNATURE,
+            false,
         ));
 
         let maybe_porting = <Porting<Test>>::get((Network::Ethereum, &namespace, &token));
@@ -59,6 +60,7 @@ fn should_fail_when_imported() {
                 token.clone(),
                 SIGNING_ETH_ADDR.into(),
                 SIGNATURE,
+                false,
             ),
             Error::<Test>::Exists
         );
@@ -81,6 +83,7 @@ fn should_fail_when_importing() {
             token.clone(),
             SIGNING_ETH_ADDR.into(),
             SIGNATURE,
+            false,
         ));
 
         assert_noop!(
@@ -91,6 +94,7 @@ fn should_fail_when_importing() {
                 token.clone(),
                 SIGNING_ETH_ADDR.into(),
                 SIGNATURE,
+                false,
             ),
             Error::<Test>::Exists
         );
@@ -402,7 +406,8 @@ fn should_import_nft_by_ocw() {
                 namespace.clone(),
                 token.into(),
                 SIGNING_ETH_ADDR.into(),
-                SIGNATURE
+                SIGNATURE,
+                false
             ));
 
             assert_ok!(Nft::ocw_begin_block(System::block_number()));
@@ -444,6 +449,7 @@ fn should_sumbit_porting() {
             token.clone(),
             SIGNING_ETH_ADDR.into(),
             SIGNATURE,
+            false,
         ));
         assert_ok!(Nft::submit_porting(
             frame_system::RawOrigin::None.into(),

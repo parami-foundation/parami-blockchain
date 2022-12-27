@@ -360,13 +360,7 @@ pub mod pallet {
 
             let token_amount_dry = T::Swaps::quote_in_dry(nft_id, ad3_amount)?;
 
-            T::Swaps::token_out(
-                who.clone(),
-                nft_id,
-                token_amount_dry,
-                ad3_amount,
-                true,
-            )?;
+            T::Swaps::token_out(who.clone(), nft_id, token_amount_dry, ad3_amount, true)?;
 
             Self::bid_with_fraction_inner(did, who, ad_id, nft_id, token_amount_dry, None, None)
         }

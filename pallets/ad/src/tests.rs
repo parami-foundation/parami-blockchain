@@ -341,7 +341,14 @@ fn should_sync_bid() {
             7_000_000
         ));
         assert_ok!(Swap::create(Origin::signed(ALICE), nft));
-        assert_ok!(Swap::add_liquidity(Origin::signed(ALICE), nft, 1_000, 1_000, 1_000_000, endtime));
+        assert_ok!(Swap::add_liquidity(
+            Origin::signed(ALICE),
+            nft,
+            1_000,
+            1_000,
+            1_000_000,
+            endtime
+        ));
         // 2. bob bid for ad1
 
         let bob_bid_ad3 = 40;
@@ -1225,7 +1232,8 @@ fn should_claim_without_advertiser_signature_with_no_reward_if_score_is_zero() {
 }
 
 #[test]
-pub fn should_claim_but_should_not_affect_rating_when_bid_by_non_advertiser_and_score_diff_is_positive() {
+pub fn should_claim_but_should_not_affect_rating_when_bid_by_non_advertiser_and_score_diff_is_positive(
+) {
     new_test_ext().execute_with(|| {
         // 1. prepare
         let (ad, nft) = prepare_pay!();

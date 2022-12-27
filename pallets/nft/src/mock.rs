@@ -304,7 +304,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
         deposit: Default::default(),
         deposits: Default::default(),
         next_instance_id: NEXT_INSTANCE_ID,
-        nfts: vec![(0, DID_ALICE, false), (1, DID_ALICE, false)],
+        nfts: vec![(0, DID_ALICE, false, false), (1, DID_ALICE, false, false)],
         externals: vec![(
             1,
             parami_traits::types::Network::Ethereum,

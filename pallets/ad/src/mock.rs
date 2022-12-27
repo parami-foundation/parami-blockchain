@@ -349,7 +349,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
         deposit: vec![],
         deposits: vec![],
         next_instance_id: 1,
-        nfts: vec![(0, DID_ALICE, true)],
+        nfts: vec![(0, DID_ALICE, true, false)],
         externals: Default::default(),
         validate_endpoints: Default::default(),
     }

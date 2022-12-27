@@ -701,7 +701,12 @@ pub mod pallet {
         pub deposit: Vec<(NftOf<T>, BalanceOf<T>)>,
         pub deposits: Vec<(NftOf<T>, T::DecentralizedId, BalanceOf<T>)>,
         pub next_instance_id: NftOf<T>,
-        pub nfts: Vec<(NftOf<T>, T::DecentralizedId, bool /*minted*/, bool /*sync_bid_only*/)>,
+        pub nfts: Vec<(
+            NftOf<T>,
+            T::DecentralizedId,
+            bool, /*minted*/
+            bool, /*sync_bid_only*/
+        )>,
         pub externals: Vec<(NftOf<T>, Network, Vec<u8>, Vec<u8>, T::DecentralizedId)>,
         pub validate_endpoints: Vec<(Network, Vec<u8>)>,
     }
@@ -835,7 +840,7 @@ impl<T: Config> Pallet<T> {
                 class_id: id,
                 token_asset_id: id,
                 minted: false,
-                sync_bid_only
+                sync_bid_only,
             },
         );
 
