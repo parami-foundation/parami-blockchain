@@ -54,7 +54,7 @@ fn should_create() {
 }
 
 #[test]
-fn should_fail_when_min_greater_than_max() {
+fn should_not_create_when_min_greater_than_max() {
     new_test_ext().execute_with(|| {
         let tags = vec![
             vec![5u8, 4u8, 3u8, 2u8, 1u8, 0u8],
@@ -87,7 +87,7 @@ fn should_fail_when_min_greater_than_max() {
 }
 
 #[test]
-fn should_fail_when_tag_not_exists() {
+fn should_not_create_when_tag_not_exists() {
     new_test_ext().execute_with(|| {
         let tags = vec![
             vec![0u8, 1u8, 2u8, 3u8, 4u8, 5u8],
@@ -136,7 +136,7 @@ fn should_update_reward_rate() {
 }
 
 #[test]
-fn should_fail_when_not_exists_or_not_owned() {
+fn should_not_update_reward_rate_when_not_exists_or_not_owned() {
     new_test_ext().execute_with(|| {
         assert_noop!(
             Ad::update_reward_rate(Origin::signed(ALICE), Default::default(), 2),
@@ -320,7 +320,52 @@ fn should_bid() {
 }
 
 #[test]
-fn should_fail_to_add_budget_when_fungible_not_same_with_bid() {
+fn should_sync_bid() {
+    new_test_ext().execute_with(|| {
+        // 1. prepare
+
+        let nft = Nft::preferred(DID_ALICE).unwrap();
+        let endtime = 43200;
+
+        assert_ok!(Assets::force_create(
+            Origin::root(),
+            9,
+            MultiAddress::Id(ALICE),
+            true,
+            1
+        ));
+        assert_ok!(Assets::mint(
+            Origin::signed(ALICE),
+            nft,
+            MultiAddress::Id(ALICE),
+            7_000_000
+        ));
+        assert_ok!(Swap::create(Origin::signed(ALICE), nft));
+        assert_ok!(Swap::add_liquidity(Origin::signed(ALICE), nft, 1_000, 1_000, 1_000_000, endtime));
+        // 2. bob bid for ad1
+
+        let bob_bid_ad3 = 40;
+
+        assert_ok!(Ad::sync_bid(
+            // used to bid
+            Origin::signed(BOB),
+            nft,
+            bob_bid_ad3,
+            // used to create ad
+            vec![],
+            [0u8; 64].into(),
+            1,
+            endtime,
+            1u128,
+            0,
+            10u128,
+            None
+        ));
+    });
+}
+
+#[test]
+fn should_not_add_budget_when_fungible_not_same_with_bid() {
     new_test_ext().execute_with(|| {
         assert_ok!(Assets::force_create(
             Origin::root(),
@@ -750,7 +795,7 @@ fn should_pay_dual() {
 }
 
 #[test]
-fn fail_to_pay_if_not_owner_or_delegated() {
+fn should_not_pay_if_not_owner_or_delegated() {
     new_test_ext().execute_with(|| {
         // 1. prepare
 
@@ -873,7 +918,7 @@ fn should_pay_if_delegated() {
 }
 
 #[test]
-fn should_distribute_fractions_proportionally() {
+fn should_claim_and_distribute_fractions_proportionally() {
     use sp_runtime::MultiAddress;
 
     new_test_ext().execute_with(|| {
@@ -1053,7 +1098,7 @@ fn should_claim_all_fractions_if_fractions_less_than_expected() {
 }
 
 #[test]
-fn should_claim_success_when_signature_exists() {
+fn should_claim_when_signature_exists() {
     new_test_ext().execute_with(|| {
         // 1. prepare
         let (ad, nft) = prepare_pay!();
@@ -1102,7 +1147,7 @@ fn should_claim_success_when_signature_exists() {
 }
 
 #[test]
-fn should_claim_success_when_signature_not_exists() {
+fn should_claim_when_signature_not_exists() {
     new_test_ext().execute_with(|| {
         // 1. prepare
         let (ad, nft) = prepare_pay!();
@@ -1131,7 +1176,7 @@ fn should_claim_success_when_signature_not_exists() {
     });
 }
 #[test]
-fn should_not_reward_if_score_is_zero() {
+fn should_claim_without_advertiser_signature_with_no_reward_if_score_is_zero() {
     new_test_ext().execute_with(|| {
         // 1. prepare
         let (ad, nft) = prepare_pay!(1u128, 1u128, 10u128, 10u128);
@@ -1180,7 +1225,7 @@ fn should_not_reward_if_score_is_zero() {
 }
 
 #[test]
-pub fn non_advertisers_should_not_affect_ratin_when_score_diff_is_positive() {
+pub fn should_claim_but_should_not_affect_rating_when_bid_by_non_advertiser_and_score_diff_is_positive() {
     new_test_ext().execute_with(|| {
         // 1. prepare
         let (ad, nft) = prepare_pay!();
@@ -1231,7 +1276,7 @@ pub fn non_advertisers_should_not_affect_ratin_when_score_diff_is_positive() {
 }
 
 #[test]
-pub fn non_advertisers_should_not_affect_ratin_when_score_diff_is_negative() {
+pub fn should_claim_but_non_advertisers_should_not_affect_ratin_when_score_diff_is_negative() {
     new_test_ext().execute_with(|| {
         // 1. prepare
         let (ad, nft) = prepare_pay!();

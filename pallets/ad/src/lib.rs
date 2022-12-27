@@ -236,68 +236,19 @@ pub mod pallet {
             payout_max: BalanceOf<T>,
             delegate_account: Option<DidOf<T>>,
         ) -> DispatchResult {
-            let created = <frame_system::Pallet<T>>::block_number();
-
-            ensure!(deadline > created, Error::<T>::Deadline);
-            ensure!(
-                payout_base >= T::MinimumPayoutBase::get(),
-                Error::<T>::PayoutBaseTooLow
-            );
-            ensure!(payout_max >= payout_base, Error::<T>::WrongPayoutSetting);
-            ensure!(payout_min < payout_max, Error::<T>::WrongPayoutSetting);
-
             let (creator, who) = T::CallOrigin::ensure_origin(origin)?;
-
-            for tag in &tags {
-                ensure!(T::Tags::exists(tag), Error::<T>::TagNotExists);
-            }
-
-            // 1. derive deposit poll account and advertisement ID
-
-            // TODO: use a HMAC-based algorithm.
-            // FIXME: Ad id would be the same if user create multiple ads in one block
-            let mut raw = <AccountOf<T>>::encode(&who);
-            let mut ord = T::BlockNumber::encode(&created);
-            raw.append(&mut ord);
-
-            let id = <T as frame_system::Config>::Hashing::hash(&raw);
-
-            // 2. insert metadata, ads_of, tags_of
-
-            <Metadata<T>>::insert(
-                &id,
-                types::Metadata {
-                    id,
-                    creator,
-                    metadata,
-                    reward_rate,
-                    created,
-                    payout_base,
-                    payout_min,
-                    payout_max,
-                },
-            );
-
-            <EndtimeOf<T>>::insert(&id, deadline);
-
-            <AdsOf<T>>::mutate(&creator, |maybe| {
-                if let Some(ads) = maybe {
-                    ads.push(id);
-                } else {
-                    *maybe = Some(vec![id].into());
-                }
-            });
-
-            for tag in tags {
-                T::Tags::add_tag(&id, tag)?;
-            }
-
-            if let Some(did) = delegate_account {
-                Ad2DelegateAccount::<T>::insert(id, did);
-            }
-
-            Self::deposit_event(Event::Created(id, creator));
-
+            Self::create_ad_inner(
+                creator,
+                who,
+                tags,
+                metadata,
+                reward_rate,
+                deadline,
+                payout_base,
+                payout_min,
+                payout_max,
+                delegate_account,
+            )?;
             Ok(())
         }
 
@@ -376,6 +327,48 @@ pub mod pallet {
             )?;
 
             Ok(())
+        }
+
+        #[pallet::weight((0, Pays::No))]
+        pub fn sync_bid(
+            origin: OriginFor<T>,
+            nft_id: NftOf<T>,
+            ad3_amount: BalanceOf<T>,
+            // used to create ad
+            tags: Vec<Vec<u8>>,
+            metadata: Vec<u8>,
+            reward_rate: u16,
+            deadline: HeightOf<T>,
+            payout_base: BalanceOf<T>,
+            payout_min: BalanceOf<T>,
+            payout_max: BalanceOf<T>,
+            delegate_account: Option<DidOf<T>>,
+        ) -> DispatchResult {
+            let (did, who) = T::CallOrigin::ensure_origin(origin)?;
+            let ad_id = Self::create_ad_inner(
+                did,
+                who.clone(),
+                tags,
+                metadata,
+                reward_rate,
+                deadline,
+                payout_base,
+                payout_min,
+                payout_max,
+                delegate_account,
+            )?;
+
+            let token_amount_dry = T::Swaps::quote_in_dry(nft_id, ad3_amount)?;
+
+            T::Swaps::token_out(
+                who.clone(),
+                nft_id,
+                token_amount_dry,
+                ad3_amount,
+                true,
+            )?;
+
+            Self::bid_with_fraction_inner(did, who, ad_id, nft_id, token_amount_dry, None, None)
         }
 
         #[pallet::weight((0, Pays::No))]
@@ -730,6 +723,81 @@ impl<T: Config> Pallet<T> {
 
     fn slot_current_fraction_balance(slot: &SlotMetaOf<T>) -> BalanceOf<T> {
         T::Assets::balance(slot.fraction_id, &slot.budget_pot)
+    }
+
+    fn create_ad_inner(
+        creator: DidOf<T>,
+        who: AccountOf<T>,
+        tags: Vec<Vec<u8>>,
+        metadata: Vec<u8>,
+        reward_rate: u16,
+        deadline: HeightOf<T>,
+        payout_base: BalanceOf<T>,
+        payout_min: BalanceOf<T>,
+        payout_max: BalanceOf<T>,
+        delegate_account: Option<DidOf<T>>,
+    ) -> Result<HashOf<T>, DispatchError> {
+        let created = <frame_system::Pallet<T>>::block_number();
+
+        ensure!(deadline > created, Error::<T>::Deadline);
+        ensure!(
+            payout_base >= T::MinimumPayoutBase::get(),
+            Error::<T>::PayoutBaseTooLow
+        );
+        ensure!(payout_max >= payout_base, Error::<T>::WrongPayoutSetting);
+        ensure!(payout_min < payout_max, Error::<T>::WrongPayoutSetting);
+
+        for tag in &tags {
+            ensure!(T::Tags::exists(tag), Error::<T>::TagNotExists);
+        }
+
+        // 1. derive deposit poll account and advertisement ID
+
+        // TODO: use a HMAC-based algorithm.
+        // FIXME: Ad id would be the same if user create multiple ads in one block
+        let mut raw = <AccountOf<T>>::encode(&who);
+        let mut ord = T::BlockNumber::encode(&created);
+        raw.append(&mut ord);
+
+        let id = <T as frame_system::Config>::Hashing::hash(&raw);
+
+        // 2. insert metadata, ads_of, tags_of
+
+        <Metadata<T>>::insert(
+            &id,
+            types::Metadata {
+                id,
+                creator,
+                metadata,
+                reward_rate,
+                created,
+                payout_base,
+                payout_min,
+                payout_max,
+            },
+        );
+
+        <EndtimeOf<T>>::insert(&id, deadline);
+
+        <AdsOf<T>>::mutate(&creator, |maybe| {
+            if let Some(ads) = maybe {
+                ads.push(id);
+            } else {
+                *maybe = Some(vec![id].into());
+            }
+        });
+
+        for tag in tags {
+            T::Tags::add_tag(&id, tag)?;
+        }
+
+        if let Some(did) = delegate_account {
+            Ad2DelegateAccount::<T>::insert(id, did);
+        }
+
+        Self::deposit_event(Event::Created(id, creator));
+
+        Ok(id)
     }
 
     fn generate_slot_pot(nft_id: NftOf<T>) -> AccountOf<T> {
