@@ -1,4 +1,4 @@
-use crate::{mock::*, AdsOf, Config, DeadlineOf, EndtimeOf, Error, Metadata, SlotOf};
+use crate::{mock::*, AdAsset, AdsOf, Config, DeadlineOf, EndtimeOf, Error, Metadata, SlotOf};
 use frame_support::{assert_noop, assert_ok, traits::Hooks};
 use parami_primitives::constants::DOLLARS;
 use parami_traits::Tags;
@@ -441,7 +441,7 @@ fn should_add_budget() {
             bob_bid_fungible + new_fungibles
         );
         assert_eq!(
-            Assets::balance(slot.fraction_id, BOB),
+            AdAsset::<Test>::balance(&slot.ad_asset, &BOB),
             BOB_BALANCE - bob_bid_fraction - new_budget
         );
 
@@ -937,8 +937,12 @@ fn should_distribute_fractions_proportionally() {
 
         let slot = SlotOf::<Test>::get(nft).unwrap();
         // Charlie's score is 5, and payout base is 1, so the expected received amount is 5 * 1. It's 5 of total 10 fractions.
-        assert_eq!(Assets::balance(slot.fraction_id, slot.budget_pot), 10);
-        assert_eq!(Assets::balance(slot.fraction_id, CHARLIE), 500);
+
+        assert_eq!(
+            AdAsset::<Test>::balance(&slot.ad_asset, &slot.budget_pot),
+            10
+        );
+        assert_eq!(AdAsset::<Test>::balance(&slot.ad_asset, &CHARLIE), 500);
         assert_eq!(
             Assets::balance(slot.fungible_id.unwrap(), slot.budget_pot),
             2
@@ -954,8 +958,12 @@ fn should_distribute_fractions_proportionally() {
             sp_runtime::MultiSignature::Sr25519(signature),
             bod_account_id_32.clone(),
         ));
-        assert_eq!(Assets::balance(slot.fraction_id, slot.budget_pot), 5);
-        assert_eq!(Assets::balance(slot.fraction_id, CHARLIE), 505);
+
+        assert_eq!(
+            AdAsset::<Test>::balance(&slot.ad_asset, &slot.budget_pot),
+            5
+        );
+        assert_eq!(AdAsset::<Test>::balance(&slot.ad_asset, &CHARLIE), 505);
 
         // respectively, we should give 1 fungibles of total 2.
         assert_eq!(
@@ -1032,8 +1040,12 @@ fn should_claim_all_fractions_if_fractions_less_than_expected() {
 
         let slot = SlotOf::<Test>::get(nft).unwrap();
         // Charlie's score is 5, and payout base is 1, so the expected received amount is 5 * 1. However the budget pot has only 4.
-        assert_eq!(Assets::balance(slot.fraction_id, slot.budget_pot), 4);
-        assert_eq!(Assets::balance(slot.fraction_id, CHARLIE), 500);
+
+        assert_eq!(
+            AdAsset::<Test>::balance(&slot.ad_asset, &slot.budget_pot),
+            4
+        );
+        assert_eq!(AdAsset::<Test>::balance(&slot.ad_asset, &CHARLIE), 500);
         assert_ok!(Ad::claim(
             Origin::signed(CHARLIE),
             ad,
@@ -1044,8 +1056,12 @@ fn should_claim_all_fractions_if_fractions_less_than_expected() {
             sp_runtime::MultiSignature::Sr25519(signature),
             bod_account_id_32.clone(),
         ));
-        assert_eq!(Assets::balance(slot.fraction_id, slot.budget_pot), 0);
-        assert_eq!(Assets::balance(slot.fraction_id, CHARLIE), 504);
+
+        assert_eq!(
+            AdAsset::<Test>::balance(&slot.ad_asset, &slot.budget_pot),
+            0
+        );
+        assert_eq!(AdAsset::<Test>::balance(&slot.ad_asset, &CHARLIE), 504);
 
         // And our ad is drawback.
         assert_eq!(SlotOf::<Test>::get(nft), None);
