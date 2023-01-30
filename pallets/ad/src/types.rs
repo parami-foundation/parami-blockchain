@@ -3,13 +3,10 @@ use crate::{
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::traits::ExistenceRequirement;
-use scale_info::{
-    build::{Fields, Variants},
-    MetaType, Path, Type, TypeInfo, TypeParameter,
-};
+use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_runtime::{traits::AtLeast32Bit, RuntimeDebug};
+use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
 
 #[derive(Clone, Decode, Default, Encode, Eq, PartialEq, RuntimeDebug, TypeInfo)]
@@ -50,12 +47,6 @@ pub enum CurrencyOrAsset<AssetOf> {
     Asset(AssetOf),
 }
 
-impl<T: AtLeast32Bit> Default for CurrencyOrAsset<T> {
-    fn default() -> Self {
-        CurrencyOrAsset::Asset(0u32.into())
-    }
-}
-
 pub trait AdAsset<T: Config> {
     fn balance(&self, account: &AccountOf<T>) -> BalanceOf<T>;
     fn transfer(
@@ -84,7 +75,7 @@ impl<T: Config> AdAsset<T> for CurrencyOrAsset<AssetsOf<T>> {
     ) -> DispatchResult {
         match self {
             CurrencyOrAsset::Currency => {
-                T::Currency::transfer(from, to, amount, ExistenceRequirement::AllowDeath);
+                T::Currency::transfer(from, to, amount, ExistenceRequirement::KeepAlive)?;
             }
             CurrencyOrAsset::Asset(asset_id) => {
                 T::Assets::transfer(*asset_id, from, to, amount, false)?;
