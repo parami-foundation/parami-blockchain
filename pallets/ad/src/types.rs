@@ -48,17 +48,18 @@ pub enum CurrencyOrAsset<AssetOf> {
 }
 
 pub trait AdAsset<T: Config> {
-    fn balance(&self, account: &AccountOf<T>) -> BalanceOf<T>;
+    fn reduciable_balance(&self, account: &AccountOf<T>) -> BalanceOf<T>;
     fn transfer(
         &self,
         from: &AccountOf<T>,
         to: &AccountOf<T>,
         amount: BalanceOf<T>,
+        keep_alive: bool,
     ) -> DispatchResult;
 }
 
 impl<T: Config> AdAsset<T> for CurrencyOrAsset<AssetsOf<T>> {
-    fn balance(&self, account: &AccountOf<T>) -> BalanceOf<T> {
+    fn reduciable_balance(&self, account: &AccountOf<T>) -> BalanceOf<T> {
         match self {
             CurrencyOrAsset::Currency => T::Currency::free_balance(account),
             CurrencyOrAsset::Asset(asset_id) => {
@@ -72,13 +73,19 @@ impl<T: Config> AdAsset<T> for CurrencyOrAsset<AssetsOf<T>> {
         from: &AccountOf<T>,
         to: &AccountOf<T>,
         amount: BalanceOf<T>,
+        keep_alive: bool,
     ) -> DispatchResult {
         match self {
             CurrencyOrAsset::Currency => {
-                T::Currency::transfer(from, to, amount, ExistenceRequirement::KeepAlive)?;
+                let requirement = if keep_alive {
+                    ExistenceRequirement::KeepAlive
+                } else {
+                    ExistenceRequirement::AllowDeath
+                };
+                T::Currency::transfer(from, to, amount, requirement)?;
             }
             CurrencyOrAsset::Asset(asset_id) => {
-                T::Assets::transfer(*asset_id, from, to, amount, false)?;
+                T::Assets::transfer(*asset_id, from, to, amount, keep_alive)?;
             }
         }
 

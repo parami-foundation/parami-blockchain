@@ -227,6 +227,7 @@ pub mod pallet {
         Overflow,
         Rated,
         PayoutBaseTooLow,
+        Minted,
     }
 
     #[pallet::call]
@@ -370,6 +371,9 @@ pub mod pallet {
         ) -> DispatchResult {
             let (did, who) = T::CallOrigin::ensure_origin(origin)?;
 
+            let nft_meta = Nft::<T>::meta(nft_id).ok_or(Error::<T>::NotExists)?;
+            ensure!(nft_meta.minted == false, Error::<T>::Minted);
+
             Self::bid_with_ad_asset(
                 did,
                 who,
@@ -432,7 +436,7 @@ pub mod pallet {
 
             let ad_asset = slot.ad_asset;
             ensure!(
-                AdAsset::<T>::balance(&ad_asset, &who) >= fraction_value,
+                AdAsset::<T>::reduciable_balance(&ad_asset, &who) >= fraction_value,
                 Error::<T>::InsufficientFractions
             );
 
@@ -449,7 +453,7 @@ pub mod pallet {
                 T::Assets::transfer(fungible_id, &who, &slot.budget_pot, fungible_value, false)?;
             }
 
-            AdAsset::<T>::transfer(&ad_asset, &who, &slot.budget_pot, fraction_value)?;
+            AdAsset::<T>::transfer(&ad_asset, &who, &slot.budget_pot, fraction_value, true)?;
 
             Self::deposit_event(Event::Deposited(nft_id, did, fraction_value));
 
@@ -713,12 +717,12 @@ impl<T: Config> Pallet<T> {
             )?;
         }
 
-        let locking_fractions = Self::slot_current_fraction_balance(&slot);
-        T::Assets::transfer(
-            slot.nft_id,
+        let locking_budget = Self::slot_current_budget(&slot);
+        AdAsset::<T>::transfer(
+            &slot.ad_asset,
             &slot.budget_pot,
             &owner_account,
-            locking_fractions,
+            locking_budget,
             false,
         )?;
 
@@ -726,7 +730,7 @@ impl<T: Config> Pallet<T> {
 
         <DeadlineOf<T>>::remove(slot.nft_id, slot.ad_id);
 
-        Self::deposit_event(Event::End(slot.nft_id, slot.ad_id, locking_fractions));
+        Self::deposit_event(Event::End(slot.nft_id, slot.ad_id, locking_budget));
 
         Ok(())
     }
@@ -761,8 +765,8 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn slot_current_fraction_balance(slot: &SlotMetaOf<T>) -> BalanceOf<T> {
-        AdAsset::<T>::balance(&slot.ad_asset, &slot.budget_pot)
+    fn slot_current_budget(slot: &SlotMetaOf<T>) -> BalanceOf<T> {
+        AdAsset::<T>::reduciable_balance(&slot.ad_asset, &slot.budget_pot)
     }
 
     fn generate_slot_pot(nft_id: NftOf<T>) -> AccountOf<T> {
@@ -855,14 +859,14 @@ impl<T: Config> Pallet<T> {
         // 4. payout assets
         // 4.1 pay nft fractions to visitor
         let account = Did::<T>::lookup_did(*visitor).ok_or(parami_did::Error::<T>::DidNotExists)?;
-        T::Assets::transfer(slot.nft_id, &slot.budget_pot, &account, reward, false)?;
+        AdAsset::<T>::transfer(&slot.ad_asset, &slot.budget_pot, &account, reward, false)?;
 
         // 4.2 pay nft fractions to referrer
         if let Some(referrer) = referrer {
             let referrer_account =
                 Did::<T>::lookup_did(*referrer).ok_or(parami_did::Error::<T>::DidNotExists)?;
-            T::Assets::transfer(
-                slot.nft_id,
+            AdAsset::<T>::transfer(
+                &slot.ad_asset,
                 &slot.budget_pot,
                 &referrer_account,
                 award,
@@ -890,7 +894,7 @@ impl<T: Config> Pallet<T> {
         ));
 
         // 6. drawback if advertiser does not have enough fees
-        if Self::slot_current_fraction_balance(&slot) < T::MinimumFeeBalance::get() {
+        if Self::slot_current_budget(&slot) < T::MinimumFeeBalance::get() {
             Self::drawback(&slot)?;
         }
 
@@ -939,9 +943,9 @@ impl<T: Config> Pallet<T> {
             amount = ad_meta.payout_max;
         }
 
-        let fraction_free_balance = Self::slot_current_fraction_balance(&slot);
+        let fraction_budget = Self::slot_current_budget(&slot);
 
-        let amount = amount.min(fraction_free_balance);
+        let amount = amount.min(fraction_budget);
 
         let award = if let Some(_referrer) = referrer {
             let rate = ad_meta.reward_rate.into();
@@ -953,7 +957,7 @@ impl<T: Config> Pallet<T> {
 
         let fungibles: BalanceOf<T> = if let Some(fungible_id) = slot.fungible_id {
             let amount: U512 = Self::try_into(amount.clone())?;
-            let free_balance: U512 = Self::try_into(fraction_free_balance)?;
+            let free_balance: U512 = Self::try_into(fraction_budget)?;
             let fungibles_balance: U512 =
                 Self::try_into(T::Assets::balance(fungible_id, &slot.budget_pot))?;
 
@@ -1023,7 +1027,7 @@ impl<T: Config> Pallet<T> {
         let created = <frame_system::Pallet<T>>::block_number();
 
         // check account has enough balance
-        let fraction_balance: BalanceOf<T> = AdAsset::<T>::balance(&ad_asset, &who);
+        let fraction_balance: BalanceOf<T> = AdAsset::<T>::reduciable_balance(&ad_asset, &who);
 
         ensure!(
             fraction_balance >= bid_amount,
@@ -1038,11 +1042,11 @@ impl<T: Config> Pallet<T> {
         // and drawback current ad
 
         if let Some(slot) = slot {
-            let locked_fractions = Self::slot_current_fraction_balance(&slot);
+            let locked_budget = Self::slot_current_budget(&slot);
 
             ensure!(
                 bid_amount.saturating_mul(100u32.into())
-                    > locked_fractions.saturating_mul(120u32.into()),
+                    > locked_budget.saturating_mul(120u32.into()),
                 Error::<T>::Underbid
             );
 
@@ -1051,7 +1055,7 @@ impl<T: Config> Pallet<T> {
 
         // 3. deposit fractions and fungibles
         let pot = Self::generate_slot_pot(nft_id);
-        AdAsset::<T>::transfer(&ad_asset, &who, &pot, bid_amount)?;
+        AdAsset::<T>::transfer(&ad_asset, &who, &pot, bid_amount, false)?;
 
         if let Some(fungible_id) = fungible_id {
             T::Assets::transfer(fungible_id, &who, &pot, fungibles, false)?;
