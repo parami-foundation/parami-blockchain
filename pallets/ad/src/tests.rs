@@ -212,7 +212,7 @@ fn should_generate_unique_slot_pot() {
 }
 
 #[test]
-fn should_bid() {
+fn should_bid_with_fraction() {
     new_test_ext().execute_with(|| {
         // 1. prepare
 
@@ -1559,6 +1559,42 @@ fn should_fail_bid_with_currency_if_minted() {
         assert_noop!(
             Ad::bid_with_currency(Origin::signed(CHARLIE), ad1, nft, bob_bid_currency),
             Error::<Test>::Minted
+        );
+    });
+}
+
+#[test]
+fn should_fail_bid_with_fraction_if_not_minted() {
+    new_test_ext().execute_with(|| {
+        // 1. prepare
+        let nft = 0;
+        let endtime = 43200;
+
+        // ad1
+        assert_ok!(Ad::create(
+            Origin::signed(BOB),
+            vec![],
+            [0u8; 64].into(),
+            1,
+            endtime,
+            1u128,
+            0,
+            10u128,
+            None
+        ));
+
+        let ad1 = <Metadata<Test>>::iter_keys().next().unwrap();
+
+        // 2. bob bid for ad1
+
+        let slot = <SlotOf<Test>>::get(nft);
+        assert_eq!(slot, None);
+
+        let bob_bid_fraction = 400;
+
+        assert_noop!(
+            Ad::bid_with_fraction(Origin::signed(BOB), ad1, nft, bob_bid_fraction, None, None),
+            Error::<Test>::NotMinted
         );
     });
 }

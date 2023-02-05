@@ -34,7 +34,8 @@ pub mod v5 {
         type V4SlotMetaOf<T> = V4Slot<HashOf<T>, HeightOf<T>, NftOf<T>, AssetsOf<T>, AccountOf<T>>;
 
         #[frame_support::storage_alias]
-        pub(super) type SlotOf<T: Config> = StorageMap<_, Twox64Concat, NftOf<T>, V4SlotMetaOf<T>>;
+        pub(super) type SlotOf<T: Config> =
+            StorageMap<crate::Pallet<T>, Twox64Concat, NftOf<T>, V4SlotMetaOf<T>>;
     }
 
     pub struct BidWithCurrencyOrAsset<T>(sp_std::marker::PhantomData<T>);
@@ -42,7 +43,7 @@ pub mod v5 {
     impl<T: Config> OnRuntimeUpgrade for BidWithCurrencyOrAsset<T> {
         fn on_runtime_upgrade() -> Weight {
             let version = StorageVersion::get::<Pallet<T>>();
-            if version != 4 {
+            if version > 4 {
                 return 0;
             }
 
@@ -66,7 +67,11 @@ pub mod v5 {
         fn pre_upgrade() -> Result<(), &'static str> {
             use log::info;
             let storage_version = StorageVersion::get::<Pallet<T>>();
-            assert!(storage_version == 4, "current storage version should be 4");
+            assert!(
+                // for staging
+                storage_version <= 4,
+                "current storage version should be less than 5"
+            );
 
             let mut counter = 0;
             for (_, slot) in old::SlotOf::<T>::iter() {
