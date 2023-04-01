@@ -1,9 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub use pallet::*;
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://substrate.dev/docs/en/knowledgebase/runtime/frame>
-pub use pallet::*;
 
 #[cfg(test)]
 mod mock;
@@ -14,16 +14,38 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+type AccountOf<T> = <T as frame_system::Config>::AccountId;
+type CctpAssetOf<T> = <T as Config>::CctpAssetId;
+type BalanceOf<T> = <T as pallet_balances::Config>::Balance;
+type AssetOf<T> = <T as pallet_assets::Config>::AssetId;
+type DidOf<T> = <T as parami_did::Config>::DecentralizedId;
+type DomainOf<T> = <T as Config>::DomainId;
+
 #[frame_support::pallet]
 pub mod pallet {
+    use super::*;
+    use frame_support::traits::tokens::fungibles::{Create, Inspect, Mutate, Transfer};
+    use frame_support::traits::Currency;
     use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
     use frame_system::pallet_prelude::*;
+    use sp_core::U256;
+    use sp_runtime::traits::AtLeast32BitUnsigned;
 
     /// Configure the pallet by specifying the parameters and types on which it depends.
     #[pallet::config]
-    pub trait Config: frame_system::Config {
+    pub trait Config:
+        frame_system::Config + pallet_balances::Config + pallet_assets::Config + parami_did::Config
+    {
         /// Because this pallet emits events, it depends on the runtime's definition of an event.
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type CctpAssetId: AtLeast32BitUnsigned + Parameter + Default + Copy;
+        type DomainId: AtLeast32BitUnsigned + Parameter + Default + Copy;
+
+        type Currency: Currency<<Self as frame_system::Config>::AccountId>;
+        type Assets: Transfer<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>
+            + Mutate<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>
+            + Create<AccountOf<Self>, AssetId = AssetOf<Self>>
+            + Inspect<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -64,39 +86,38 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// An example dispatchable that takes a singles value as a parameter, writes the value to
         /// storage and emits an event. This function must be dispatched by a signed extrinsic.
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-        pub fn do_something(origin: OriginFor<T>, something: u32) -> DispatchResult {
-            // Check that the extrinsic was signed and get the signer.
-            // This function will return an error if the extrinsic is not signed.
-            // https://substrate.dev/docs/en/knowledgebase/runtime/origin
-            let who = ensure_signed(origin)?;
-
-            // Update storage.
-            <Something<T>>::put(something);
-
-            // Emit an event.
-            Self::deposit_event(Event::SomethingStored(something, who));
-            // Return a successful DispatchResultWithPostInfo
+        #[pallet::weight(0)]
+        pub fn deposit(
+            origin: OriginFor<T>,
+            cctp_asset_id: CctpAssetOf<T>,
+            amount: BalanceOf<T>,
+            destination_domain: DomainOf<T>,
+            destination_address: Vec<u8>,
+        ) -> DispatchResult {
             Ok(())
         }
 
-        /// An example dispatchable that may throw a custom error.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
-        pub fn cause_error(origin: OriginFor<T>) -> DispatchResult {
-            let _who = ensure_signed(origin)?;
+        #[pallet::weight(0)]
+        pub fn withdraw(
+            origin: OriginFor<T>,
+            nonce: U256,
+            cctp_asset_id: CctpAssetOf<T>,
+            amount: BalanceOf<T>,
+            source_domain: DomainOf<T>,
+            depositer: Vec<u8>,
+            recipient: DidOf<T>,
+            signature: Vec<u8>,
+        ) -> DispatchResult {
+            Ok(())
+        }
 
-            // Read a value from storage.
-            match <Something<T>>::get() {
-                // Return an error if the value has not been set.
-                None => Err(Error::<T>::NoneValue)?,
-                Some(old) => {
-                    // Increment the value read from storage; will error in the event of overflow.
-                    let new = old.checked_add(1).ok_or(Error::<T>::StorageOverflow)?;
-                    // Update the value in storage with the incremented result.
-                    <Something<T>>::put(new);
-                    Ok(())
-                }
-            }
+        #[pallet::weight(0)]
+        pub fn register_asset(
+            origin: OriginFor<T>,
+            cctp_asset_id: CctpAssetOf<T>,
+            asset_id: AssetOf<T>,
+        ) -> DispatchResult {
+            Ok(())
         }
     }
 }
