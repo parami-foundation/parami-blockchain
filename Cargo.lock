@@ -6085,6 +6085,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "parami-cctp"
+version = "3.0.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+]
+
+[[package]]
 name = "parami-chainbridge"
 version = "3.0.0"
 dependencies = [
@@ -6243,6 +6257,7 @@ dependencies = [
  "parami-ad-runtime-api",
  "parami-advertiser",
  "parami-assetmanager",
+ "parami-cctp",
  "parami-chainbridge",
  "parami-clockin",
  "parami-clockin-runtime-api",
