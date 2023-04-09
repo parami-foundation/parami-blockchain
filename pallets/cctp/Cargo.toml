@@ -43,6 +43,7 @@ version = '2.1.1'
 sp-core = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24', default-features = false }
 sp-runtime= { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24', default-features = false }
 sp-std = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24', default-features = false }
+sp-io = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24', default-features = false }
 
 parami-did = { path = '../did', default-features = false }
 
@@ -72,6 +73,7 @@ std = [
     'sp-core/std',
     'sp-std/std',
     'sp-runtime/std',
+    'sp-io/std',
 
     'parami-did/std',
     'pallet-balances/std',

@@ -20,6 +20,7 @@ type BalanceOf<T> = <T as pallet_balances::Config>::Balance;
 type AssetOf<T> = <T as pallet_assets::Config>::AssetId;
 type DidOf<T> = <T as parami_did::Config>::DecentralizedId;
 type DomainOf<T> = <T as Config>::DomainId;
+type NonceOf<T> = <T as Config>::Nonce;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -29,8 +30,10 @@ pub mod pallet {
     use frame_support::PalletId;
     use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
     use frame_system::pallet_prelude::*;
-    use sp_core::U256;
-    use sp_runtime::traits::{AccountIdConversion, AtLeast32BitUnsigned};
+    use sp_core::crypto::AccountId32;
+    use sp_io::hashing::keccak_256;
+    use sp_runtime::traits::{AtLeast32BitUnsigned, Verify};
+    use sp_runtime::MultiSignature;
     use sp_std::prelude::*;
 
     /// Configure the pallet by specifying the parameters and types on which it depends.
@@ -42,6 +45,7 @@ pub mod pallet {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
         type CctpAssetId: AtLeast32BitUnsigned + Parameter + Default + Copy + MaxEncodedLen;
         type DomainId: AtLeast32BitUnsigned + Parameter + Default + Copy + MaxEncodedLen;
+        type Nonce: AtLeast32BitUnsigned + Parameter + Default + Copy + MaxEncodedLen;
 
         type Currency: Currency<<Self as frame_system::Config>::AccountId>;
         type Assets: Transfer<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>
@@ -64,12 +68,19 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn nonce)]
-    pub type Nonce<T> = StorageValue<_, u64, ValueQuery>;
+    pub type CurrentNonce<T> = StorageValue<_, NonceOf<T>, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn used_nonces_of)]
-    pub type NoncesUsed<T> =
-        StorageDoubleMap<_, Blake2_128Concat, DomainOf<T>, Blake2_128Concat, u64, bool, ValueQuery>;
+    pub type NoncesUsed<T> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        DomainOf<T>,
+        Blake2_128Concat,
+        NonceOf<T>,
+        bool,
+        ValueQuery,
+    >;
 
     #[pallet::storage]
     #[pallet::getter(fn asset_for)]
@@ -84,13 +95,24 @@ pub mod pallet {
     pub enum Event<T: Config> {
         /// Asset Deposited. [nonce, asset_id, amount, sourceDomain, sourceDid, destinationDomain, destinationAddress]
         Deposited(
-            u64,
+            NonceOf<T>,
             CctpAssetOf<T>,
             BalanceOf<T>,
             DomainOf<T>,
             DidOf<T>,
             DomainOf<T>,
             Vec<u8>,
+        ),
+
+        /// Asset Withdrawn. [nonce, asset_id, amount, sourceDomain, sourceDid, destinationDomain, destinationAddress]
+        Withdrawed(
+            NonceOf<T>,
+            CctpAssetOf<T>,
+            BalanceOf<T>,
+            DomainOf<T>,
+            Vec<u8>,
+            DomainOf<T>,
+            DidOf<T>,
         ),
     }
 
@@ -100,6 +122,9 @@ pub mod pallet {
         CctpAssetIdNotRegistered,
         AccountBalanceNotEnough,
         IncorrectSignerSetting,
+        InvalidSignature,
+        UsedNonce,
+        InvalidRecipient,
     }
 
     #[pallet::call]
@@ -121,10 +146,10 @@ pub mod pallet {
                 Error::<T>::AccountBalanceNotEnough
             );
 
-            let nonce = Nonce::<T>::get();
-            Nonce::<T>::put(nonce + 1);
+            let nonce = CurrentNonce::<T>::get();
+            CurrentNonce::<T>::put(nonce + 1u32.into());
 
-            T::Assets::transfer(asset_id, &account, &Self::account_id(), amount, false)?;
+            T::Assets::burn_from(asset_id, &account, amount)?;
             Self::deposit_event(Event::Deposited(
                 nonce,
                 cctp_asset_id,
@@ -141,14 +166,54 @@ pub mod pallet {
         #[pallet::weight(0)]
         pub fn withdraw(
             origin: OriginFor<T>,
-            nonce: U256,
+            nonce: NonceOf<T>,
             cctp_asset_id: CctpAssetOf<T>,
             amount: BalanceOf<T>,
             source_domain: DomainOf<T>,
             depositer: Vec<u8>,
             recipient: DidOf<T>,
-            signature: Vec<u8>,
+            signature: MultiSignature,
         ) -> DispatchResult {
+            let (did, _account) = T::CallOrigin::ensure_origin(origin)?;
+            ensure!(
+                did == Self::signing_did().ok_or(Error::<T>::IncorrectSignerSetting)?,
+                Error::<T>::IncorrectSignerSetting
+            );
+
+            Self::verify_signature(
+                nonce,
+                cctp_asset_id,
+                amount,
+                source_domain,
+                &depositer,
+                recipient,
+                signature,
+            )?;
+
+            ensure!(
+                !NoncesUsed::<T>::contains_key(source_domain, nonce),
+                Error::<T>::UsedNonce
+            );
+
+            let asset_id =
+                Self::asset_for(cctp_asset_id).ok_or(Error::<T>::CctpAssetIdNotRegistered)?;
+
+            let recipient_account = parami_did::Pallet::<T>::lookup_did(recipient)
+                .ok_or(Error::<T>::InvalidRecipient)?;
+
+            NoncesUsed::<T>::insert(source_domain, nonce, true);
+            T::Assets::mint_into(asset_id, &recipient_account, amount)?;
+
+            Self::deposit_event(Event::Withdrawed(
+                nonce,
+                cctp_asset_id,
+                amount,
+                source_domain,
+                depositer,
+                T::ChainDomain::get(),
+                did,
+            ));
+
             Ok(())
         }
 
@@ -176,8 +241,59 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        fn account_id() -> AccountOf<T> {
-            <T as Config>::PalletId::get().into_sub_account_truncating(b"")
+        fn verify_signature(
+            nonce: NonceOf<T>,
+            cctp_asset_id: CctpAssetOf<T>,
+            amount: BalanceOf<T>,
+            source_domain: DomainOf<T>,
+            depositer: &Vec<u8>,
+            recipient: DidOf<T>,
+            signature: MultiSignature,
+        ) -> DispatchResult {
+            let sig_message = Self::construct_msg(
+                nonce,
+                cctp_asset_id,
+                amount,
+                source_domain,
+                depositer,
+                recipient,
+            );
+
+            let signer = Self::signing_did().ok_or(Error::<T>::IncorrectSignerSetting)?;
+            let signer_account: AccountOf<T> = parami_did::Pallet::<T>::lookup_did(signer)
+                .ok_or(Error::<T>::IncorrectSignerSetting)?;
+
+            let signer_bytes: [u8; 32] = match signer_account.encode().try_into() {
+                Ok(bytes) => bytes,
+                Err(_) => return Err(Error::<T>::IncorrectSignerSetting.into()),
+            };
+
+            let signer_account = AccountId32::from(signer_bytes);
+            ensure!(
+                signature.verify(sig_message.as_slice(), &signer_account),
+                Error::<T>::InvalidSignature
+            );
+
+            Ok(())
+        }
+
+        fn construct_msg(
+            nonce: NonceOf<T>,
+            cctp_asset_id: CctpAssetOf<T>,
+            amount: BalanceOf<T>,
+            source_domain: DomainOf<T>,
+            depositer: &Vec<u8>,
+            recipient: DidOf<T>,
+        ) -> [u8; 32] {
+            let mut msg_vec: Vec<u8> = Vec::new();
+            msg_vec.extend_from_slice(&nonce.encode());
+            msg_vec.extend_from_slice(&cctp_asset_id.encode());
+            msg_vec.extend_from_slice(&amount.encode());
+            msg_vec.extend_from_slice(&source_domain.encode());
+            msg_vec.extend_from_slice(depositer);
+            msg_vec.extend_from_slice(&T::ChainDomain::get().encode());
+            msg_vec.extend_from_slice(&recipient.encode());
+            keccak_256(&msg_vec.as_slice())
         }
     }
 }
