@@ -99,7 +99,6 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    (parami_ad::migrations::v5::BidWithCurrencyOrAsset<Runtime>),
 >;
 
 /// Era type as expected by this runtime.
@@ -164,7 +163,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("parami"),
     impl_name: create_runtime_str!("parami-node"),
     authoring_version: 20,
-    spec_version: 375,
+    spec_version: 376,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 2,
@@ -928,6 +927,23 @@ impl parami_clockin::Config for Runtime {
     type ClockInBucketSize = ClockInBucketSize;
 }
 
+parameter_types! {
+    pub const CctpPalletId: PalletId = PalletId(*names::CCTP);
+    pub const CctpChainDomain: u64 = 1;
+}
+
+impl parami_cctp::Config for Runtime {
+    type Event = Event;
+    type CctpAssetId = u64;
+    type DomainId = u64;
+    type Nonce = u64;
+    type Currency = Balances;
+    type Assets = Assets;
+    type CallOrigin = parami_did::EnsureDid<Self>;
+    type PalletId = CctpPalletId;
+    type ChainDomain = CctpChainDomain;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
     pub enum Runtime where
@@ -977,7 +993,9 @@ construct_runtime!(
         Tag: parami_tag::{Pallet, Call, Storage, Config<T>, Event<T>} = 109,
         AssetManager: parami_assetmanager::{Pallet, Storage, Config<T>} = 110,
         Stake: parami_stake::{Pallet, Storage, Event<T>} = 111,
-        ClockIn: parami_clockin::{Pallet, Call, Storage, Event<T>, Config<T>} = 112
+        ClockIn: parami_clockin::{Pallet, Call, Storage, Event<T>, Config<T>} = 112,
+        Cctp: parami_cctp::{Pallet, Call, Storage, Event<T>} = 113,
+
     }
 );
 

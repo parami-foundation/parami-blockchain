@@ -10,5 +10,6 @@ pub const SWAP: &[u8; 8] = b"prm/swap";
 pub const ASSET: &[u8; 8] = b"xassets ";
 pub const STAKE: &[u8; 8] = b"prm/stak";
 pub const CLOCKIN: &[u8; 8] = b"prm/clok";
+pub const CCTP: &[u8; 8] = b"prm/cctp";
 
 pub const CHAIN_BRIDGE: &[u8; 8] = b"chnbrdge";
