@@ -62,6 +62,9 @@ branch = 'polkadot-v0.9.24'
 git = 'https://github.com/paritytech/substrate.git'
 branch = 'polkadot-v0.9.24'
 
+[dev-dependencies]
+parami-primitives = { path = '../../primitives' }
+
 [features]
 default = ['std']
 

@@ -104,8 +104,8 @@ pub mod pallet {
             Vec<u8>,
         ),
 
-        /// Asset Withdrawn. [nonce, asset_id, amount, sourceDomain, sourceDid, destinationDomain, destinationAddress]
-        Withdrawed(
+        /// Asset Withdrawn. [nonce, asset_id, amount, sourceDomain, source_address, destination_domain, destination_did]
+        Withdrawn(
             NonceOf<T>,
             CctpAssetOf<T>,
             BalanceOf<T>,
@@ -119,9 +119,9 @@ pub mod pallet {
     // Errors inform users that something went wrong.
     #[pallet::error]
     pub enum Error<T> {
-        CctpAssetIdNotRegistered,
-        AccountBalanceNotEnough,
-        IncorrectSignerSetting,
+        AssetNotRegistered,
+        NotEnoughBalance,
+        InvalidSigner,
         InvalidSignature,
         UsedNonce,
         InvalidRecipient,
@@ -138,13 +138,9 @@ pub mod pallet {
             destination_address: Vec<u8>,
         ) -> DispatchResult {
             let (did, account) = T::CallOrigin::ensure_origin(origin)?;
-            let asset_id =
-                Self::asset_for(cctp_asset_id).ok_or(Error::<T>::CctpAssetIdNotRegistered)?;
+            let asset_id = Self::asset_for(cctp_asset_id).ok_or(Error::<T>::AssetNotRegistered)?;
             let account_balance = T::Assets::balance(asset_id, &account);
-            ensure!(
-                account_balance >= amount,
-                Error::<T>::AccountBalanceNotEnough
-            );
+            ensure!(account_balance >= amount, Error::<T>::NotEnoughBalance);
 
             let nonce = CurrentNonce::<T>::get();
             CurrentNonce::<T>::put(nonce + 1u32.into());
@@ -175,10 +171,10 @@ pub mod pallet {
             signature: MultiSignature,
         ) -> DispatchResult {
             let (did, _account) = T::CallOrigin::ensure_origin(origin)?;
-            ensure!(
-                did == Self::signing_did().ok_or(Error::<T>::IncorrectSignerSetting)?,
-                Error::<T>::IncorrectSignerSetting
-            );
+
+            let signer = Self::signing_did().ok_or(Error::<T>::InvalidSigner)?;
+            let signer_account: AccountOf<T> =
+                parami_did::Pallet::<T>::lookup_did(signer).ok_or(Error::<T>::InvalidSigner)?;
 
             Self::verify_signature(
                 nonce,
@@ -188,6 +184,7 @@ pub mod pallet {
                 &depositer,
                 recipient,
                 signature,
+                signer_account,
             )?;
 
             ensure!(
@@ -195,8 +192,7 @@ pub mod pallet {
                 Error::<T>::UsedNonce
             );
 
-            let asset_id =
-                Self::asset_for(cctp_asset_id).ok_or(Error::<T>::CctpAssetIdNotRegistered)?;
+            let asset_id = Self::asset_for(cctp_asset_id).ok_or(Error::<T>::AssetNotRegistered)?;
 
             let recipient_account = parami_did::Pallet::<T>::lookup_did(recipient)
                 .ok_or(Error::<T>::InvalidRecipient)?;
@@ -204,7 +200,7 @@ pub mod pallet {
             NoncesUsed::<T>::insert(source_domain, nonce, true);
             T::Assets::mint_into(asset_id, &recipient_account, amount)?;
 
-            Self::deposit_event(Event::Withdrawed(
+            Self::deposit_event(Event::Withdrawn(
                 nonce,
                 cctp_asset_id,
                 amount,
@@ -226,7 +222,7 @@ pub mod pallet {
             let (did, _) = T::CallOrigin::ensure_origin(origin)?;
             ensure!(
                 !Signer::<T>::get().is_none() && Signer::<T>::get().unwrap() == did,
-                Error::<T>::IncorrectSignerSetting
+                Error::<T>::InvalidSigner
             );
             AssetMap::<T>::insert(cctp_asset_id, asset_id);
             Ok(())
@@ -241,7 +237,7 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        fn verify_signature(
+        pub fn verify_signature(
             nonce: NonceOf<T>,
             cctp_asset_id: CctpAssetOf<T>,
             amount: BalanceOf<T>,
@@ -249,6 +245,7 @@ pub mod pallet {
             depositer: &Vec<u8>,
             recipient: DidOf<T>,
             signature: MultiSignature,
+            signer_account: AccountOf<T>,
         ) -> DispatchResult {
             let sig_message = Self::construct_msg(
                 nonce,
@@ -259,13 +256,9 @@ pub mod pallet {
                 recipient,
             );
 
-            let signer = Self::signing_did().ok_or(Error::<T>::IncorrectSignerSetting)?;
-            let signer_account: AccountOf<T> = parami_did::Pallet::<T>::lookup_did(signer)
-                .ok_or(Error::<T>::IncorrectSignerSetting)?;
-
             let signer_bytes: [u8; 32] = match signer_account.encode().try_into() {
                 Ok(bytes) => bytes,
-                Err(_) => return Err(Error::<T>::IncorrectSignerSetting.into()),
+                Err(_) => return Err(Error::<T>::InvalidSigner.into()),
             };
 
             let signer_account = AccountId32::from(signer_bytes);
@@ -277,7 +270,7 @@ pub mod pallet {
             Ok(())
         }
 
-        fn construct_msg(
+        pub fn construct_msg(
             nonce: NonceOf<T>,
             cctp_asset_id: CctpAssetOf<T>,
             amount: BalanceOf<T>,

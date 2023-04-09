@@ -5,6 +5,7 @@ use frame_support::{
 };
 
 use frame_system::{self as system, EnsureRoot};
+use sp_core::{ByteArray, Pair};
 use sp_core::{H160, H256};
 use sp_runtime::{
     testing::{Header, TestXt},
@@ -12,12 +13,15 @@ use sp_runtime::{
 };
 
 use frame_support::traits::ConstU128;
+use sp_core::crypto::AccountId32;
+use sp_io::TestExternalities;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
 type Balance = u128;
 type AssetId = u64;
 
+pub type AccountId = AccountId32;
 // Configure a mock runtime to test the pallet.
 frame_support::construct_runtime!(
     pub enum Test where
@@ -51,7 +55,7 @@ impl system::Config for Test {
     type BlockNumber = u64;
     type Hash = H256;
     type Hashing = BlakeTwo256;
-    type AccountId = u64;
+    type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
     type Event = Event;
@@ -135,9 +139,13 @@ impl crate::Config for Test {
     type ChainDomain = CctpChainDomain;
 }
 
-const ASSET_1: AssetId = 1;
-const ALICE: u64 = 1;
+pub const SIGNING_ACCOUNT: AccountId = AccountId32::new([0x08; 32]);
+pub const SIGNING_DID: H160 = H160([0x01; 20]);
+pub const ASSET_1: AssetId = 1;
+pub const ALICE: AccountId = AccountId32::new([0x01; 32]);
 pub const DID_ALICE: H160 = H160([0xff; 20]);
+pub const DID_BOB: H160 = H160([0x02; 20]);
+pub const BOB_SEED: &str = "/Bob";
 
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {
@@ -153,8 +161,16 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     .assimilate_storage(&mut t)
     .unwrap();
 
+    let bob_secret_pair: sp_core::sr25519::Pair =
+        sp_core::sr25519::Pair::from_string(BOB_SEED, None).unwrap();
+    let bob_account = AccountId32::new(bob_secret_pair.public().as_array_ref().clone());
+
     parami_did::GenesisConfig::<Test> {
-        ids: vec![(ALICE, DID_ALICE)],
+        ids: vec![
+            (ALICE, DID_ALICE),
+            (SIGNING_ACCOUNT, SIGNING_DID),
+            (bob_account, DID_BOB),
+        ],
     }
     .assimilate_storage(&mut t)
     .unwrap();
@@ -165,5 +181,12 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     .assimilate_storage(&mut t)
     .unwrap();
 
-    t.into()
+    let mut externalities = TestExternalities::new(t);
+    externalities.execute_with(|| System::set_block_number(1));
+
+    externalities
+}
+
+pub fn account(id: u8) -> AccountId {
+    return AccountId::from([id; 32]);
 }
