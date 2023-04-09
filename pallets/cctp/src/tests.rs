@@ -1,4 +1,5 @@
 use crate::{mock::*, Error};
+use crate::{AssetMutate, CurrencyOrAssetOf};
 use frame_support::traits::tokens::fungibles::{Inspect, Mutate};
 use frame_support::{assert_noop, assert_ok};
 use sp_core::crypto::AccountId32;
@@ -16,7 +17,7 @@ fn deposit_can_success() {
         assert_ok!(Cctp::register_asset(
             Origin::signed(SIGNING_ACCOUNT),
             CCTP_ASSET,
-            ASSET_1
+            <CurrencyOrAssetOf<Test>>::Asset(ASSET_1)
         ));
         let before_balance = Assets::balance(ASSET_1, &ALICE);
         let total_issuance = Assets::total_issuance(ASSET_1);
@@ -88,7 +89,7 @@ fn despoit_fails_if_not_enough_balance() {
         assert_ok!(Cctp::register_asset(
             Origin::signed(SIGNING_ACCOUNT),
             CCTP_ASSET,
-            ASSET_1
+            <CurrencyOrAssetOf<Test>>::Asset(ASSET_1)
         ));
         assert_noop!(
             Cctp::deposit(
@@ -107,7 +108,11 @@ fn despoit_fails_if_not_enough_balance() {
 fn register_asset_fails_if_no_signer() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Cctp::register_asset(Origin::signed(ALICE), CCTP_ASSET, ASSET_1),
+            Cctp::register_asset(
+                Origin::signed(ALICE),
+                CCTP_ASSET,
+                <CurrencyOrAssetOf<Test>>::Asset(ASSET_1)
+            ),
             Error::<Test>::InvalidSigner
         );
     });
@@ -187,7 +192,7 @@ fn withdraw_can_success() {
         assert_ok!(Cctp::register_asset(
             Origin::signed(bob_account),
             CCTP_ASSET,
-            ASSET_1
+            <CurrencyOrAssetOf<Test>>::Asset(ASSET_1)
         ));
 
         let msg = Cctp::construct_msg(
@@ -239,7 +244,7 @@ fn withdraw_fail_if_withdrawn_twice() {
         assert_ok!(Cctp::register_asset(
             Origin::signed(bob_account),
             CCTP_ASSET,
-            ASSET_1
+            <CurrencyOrAssetOf<Test>>::Asset(ASSET_1)
         ));
 
         let msg = Cctp::construct_msg(
@@ -333,7 +338,7 @@ fn withdraw_fails_if_signature_is_invalid() {
         assert_ok!(Cctp::register_asset(
             Origin::signed(bob_account),
             CCTP_ASSET,
-            ASSET_1
+            <CurrencyOrAssetOf<Test>>::Asset(ASSET_1)
         ));
 
         let msg = Cctp::construct_msg(
@@ -360,6 +365,29 @@ fn withdraw_fails_if_signature_is_invalid() {
             ),
             Error::<Test>::InvalidSignature
         );
+    });
+}
+
+#[test]
+fn currency_will_burn_and_mint() {
+    new_test_ext().execute_with(|| {
+        let asset = <CurrencyOrAssetOf<Test>>::Currency;
+
+        let before_balance = Balances::free_balance(&ALICE);
+        let before_total_issuance = Balances::total_issuance();
+
+        <CurrencyOrAssetOf<Test> as AssetMutate<Test>>::burn_from(&asset, &ALICE, 100).unwrap();
+
+        assert_eq!(Balances::free_balance(&ALICE), before_balance - 100);
+        assert_eq!(Balances::total_issuance(), before_total_issuance - 100);
+
+        let before_balance = Balances::free_balance(&ALICE);
+        let before_total_issuance = Balances::total_issuance();
+
+        <CurrencyOrAssetOf<Test> as AssetMutate<Test>>::mint_into(&asset, &ALICE, 100).unwrap();
+
+        assert_eq!(Balances::free_balance(&ALICE), before_balance + 100);
+        assert_eq!(Balances::total_issuance(), before_total_issuance + 100);
     });
 }
 

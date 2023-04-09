@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use frame_support::traits::Currency;
 pub use pallet::*;
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
@@ -14,19 +15,22 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+mod types;
+
+use types::{AssetMutate, CurrencyOrAsset};
 type AccountOf<T> = <T as frame_system::Config>::AccountId;
 type CctpAssetOf<T> = <T as Config>::CctpAssetId;
-type BalanceOf<T> = <T as pallet_balances::Config>::Balance;
+type BalanceOf<T> = <<T as Config>::Currency as Currency<AccountOf<T>>>::Balance;
 type AssetOf<T> = <T as pallet_assets::Config>::AssetId;
 type DidOf<T> = <T as parami_did::Config>::DecentralizedId;
 type DomainOf<T> = <T as Config>::DomainId;
 type NonceOf<T> = <T as Config>::Nonce;
+type CurrencyOrAssetOf<T> = CurrencyOrAsset<AssetOf<T>>;
 
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
     use frame_support::traits::tokens::fungibles::{Create, Inspect, Mutate, Transfer};
-    use frame_support::traits::Currency;
     use frame_support::PalletId;
     use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
     use frame_system::pallet_prelude::*;
@@ -84,7 +88,8 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn asset_for)]
-    pub type AssetMap<T> = StorageMap<_, Blake2_128Concat, CctpAssetOf<T>, AssetOf<T>, OptionQuery>;
+    pub type AssetMap<T> =
+        StorageMap<_, Blake2_128Concat, CctpAssetOf<T>, CurrencyOrAssetOf<T>, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn signing_did)]
@@ -138,14 +143,15 @@ pub mod pallet {
             destination_address: Vec<u8>,
         ) -> DispatchResult {
             let (did, account) = T::CallOrigin::ensure_origin(origin)?;
-            let asset_id = Self::asset_for(cctp_asset_id).ok_or(Error::<T>::AssetNotRegistered)?;
-            let account_balance = T::Assets::balance(asset_id, &account);
+            let asset = Self::asset_for(cctp_asset_id).ok_or(Error::<T>::AssetNotRegistered)?;
+            let account_balance: BalanceOf<T> =
+                <CurrencyOrAssetOf<T> as AssetMutate<T>>::balance(&asset, &account);
             ensure!(account_balance >= amount, Error::<T>::NotEnoughBalance);
 
             let nonce = CurrentNonce::<T>::get();
             CurrentNonce::<T>::put(nonce + 1u32.into());
 
-            T::Assets::burn_from(asset_id, &account, amount)?;
+            <CurrencyOrAssetOf<T> as AssetMutate<T>>::burn_from(&asset, &account, amount)?;
             Self::deposit_event(Event::Deposited(
                 nonce,
                 cctp_asset_id,
@@ -192,13 +198,17 @@ pub mod pallet {
                 Error::<T>::UsedNonce
             );
 
-            let asset_id = Self::asset_for(cctp_asset_id).ok_or(Error::<T>::AssetNotRegistered)?;
+            let asset = Self::asset_for(cctp_asset_id).ok_or(Error::<T>::AssetNotRegistered)?;
 
             let recipient_account = parami_did::Pallet::<T>::lookup_did(recipient)
                 .ok_or(Error::<T>::InvalidRecipient)?;
 
             NoncesUsed::<T>::insert(source_domain, nonce, true);
-            T::Assets::mint_into(asset_id, &recipient_account, amount)?;
+            <CurrencyOrAssetOf<T> as AssetMutate<T>>::mint_into(
+                &asset,
+                &recipient_account,
+                amount,
+            )?;
 
             Self::deposit_event(Event::Withdrawn(
                 nonce,
@@ -217,14 +227,14 @@ pub mod pallet {
         pub fn register_asset(
             origin: OriginFor<T>,
             cctp_asset_id: CctpAssetOf<T>,
-            asset_id: AssetOf<T>,
+            asset: CurrencyOrAssetOf<T>,
         ) -> DispatchResult {
             let (did, _) = T::CallOrigin::ensure_origin(origin)?;
             ensure!(
                 !Signer::<T>::get().is_none() && Signer::<T>::get().unwrap() == did,
                 Error::<T>::InvalidSigner
             );
-            AssetMap::<T>::insert(cctp_asset_id, asset_id);
+            AssetMap::<T>::insert(cctp_asset_id, asset);
             Ok(())
         }
 
