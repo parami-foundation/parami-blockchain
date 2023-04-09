@@ -26,10 +26,12 @@ pub mod pallet {
     use super::*;
     use frame_support::traits::tokens::fungibles::{Create, Inspect, Mutate, Transfer};
     use frame_support::traits::Currency;
+    use frame_support::PalletId;
     use frame_support::{dispatch::DispatchResult, pallet_prelude::*};
     use frame_system::pallet_prelude::*;
     use sp_core::U256;
-    use sp_runtime::traits::AtLeast32BitUnsigned;
+    use sp_runtime::traits::{AccountIdConversion, AtLeast32BitUnsigned};
+    use sp_std::prelude::*;
 
     /// Configure the pallet by specifying the parameters and types on which it depends.
     #[pallet::config]
@@ -38,54 +40,70 @@ pub mod pallet {
     {
         /// Because this pallet emits events, it depends on the runtime's definition of an event.
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-        type CctpAssetId: AtLeast32BitUnsigned + Parameter + Default + Copy;
-        type DomainId: AtLeast32BitUnsigned + Parameter + Default + Copy;
+        type CctpAssetId: AtLeast32BitUnsigned + Parameter + Default + Copy + MaxEncodedLen;
+        type DomainId: AtLeast32BitUnsigned + Parameter + Default + Copy + MaxEncodedLen;
 
         type Currency: Currency<<Self as frame_system::Config>::AccountId>;
         type Assets: Transfer<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>
             + Mutate<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>
             + Create<AccountOf<Self>, AssetId = AssetOf<Self>>
             + Inspect<AccountOf<Self>, AssetId = AssetOf<Self>, Balance = BalanceOf<Self>>;
+
+        type CallOrigin: EnsureOrigin<Self::Origin, Success = (DidOf<Self>, AccountOf<Self>)>;
+
+        #[pallet::constant]
+        type ChainDomain: Get<Self::DomainId>;
+
+        #[pallet::constant]
+        type PalletId: Get<PalletId>;
     }
 
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
     pub struct Pallet<T>(_);
 
-    // The pallet's runtime storage items.
-    // https://substrate.dev/docs/en/knowledgebase/runtime/storage
     #[pallet::storage]
-    #[pallet::getter(fn something)]
-    // Learn more about declaring storage items:
-    // https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
-    pub type Something<T> = StorageValue<_, u32>;
+    #[pallet::getter(fn nonce)]
+    pub type Nonce<T> = StorageValue<_, u64, ValueQuery>;
 
-    // Pallets use events to inform users when important changes are made.
-    // https://substrate.dev/docs/en/knowledgebase/runtime/events
+    #[pallet::storage]
+    #[pallet::getter(fn used_nonces_of)]
+    pub type NoncesUsed<T> =
+        StorageDoubleMap<_, Blake2_128Concat, DomainOf<T>, Blake2_128Concat, u64, bool, ValueQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn asset_for)]
+    pub type AssetMap<T> = StorageMap<_, Blake2_128Concat, CctpAssetOf<T>, AssetOf<T>, OptionQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn signing_did)]
+    pub type Signer<T> = StorageValue<_, DidOf<T>, OptionQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// Event documentation should end with an array that provides descriptive names for event
-        /// parameters. [something, who]
-        SomethingStored(u32, T::AccountId),
+        /// Asset Deposited. [nonce, asset_id, amount, sourceDomain, sourceDid, destinationDomain, destinationAddress]
+        Deposited(
+            u64,
+            CctpAssetOf<T>,
+            BalanceOf<T>,
+            DomainOf<T>,
+            DidOf<T>,
+            DomainOf<T>,
+            Vec<u8>,
+        ),
     }
 
     // Errors inform users that something went wrong.
     #[pallet::error]
     pub enum Error<T> {
-        /// Error names should be descriptive.
-        NoneValue,
-        /// Errors should have helpful documentation associated with them.
-        StorageOverflow,
+        CctpAssetIdNotRegistered,
+        AccountBalanceNotEnough,
+        IncorrectSignerSetting,
     }
 
-    // Dispatchable functions allows users to interact with the pallet and invoke state changes.
-    // These functions materialize as "extrinsics", which are often compared to transactions.
-    // Dispatchable functions must be annotated with a weight and must return a DispatchResult.
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// An example dispatchable that takes a singles value as a parameter, writes the value to
-        /// storage and emits an event. This function must be dispatched by a signed extrinsic.
         #[pallet::weight(0)]
         pub fn deposit(
             origin: OriginFor<T>,
@@ -94,6 +112,29 @@ pub mod pallet {
             destination_domain: DomainOf<T>,
             destination_address: Vec<u8>,
         ) -> DispatchResult {
+            let (did, account) = T::CallOrigin::ensure_origin(origin)?;
+            let asset_id =
+                Self::asset_for(cctp_asset_id).ok_or(Error::<T>::CctpAssetIdNotRegistered)?;
+            let account_balance = T::Assets::balance(asset_id, &account);
+            ensure!(
+                account_balance >= amount,
+                Error::<T>::AccountBalanceNotEnough
+            );
+
+            let nonce = Nonce::<T>::get();
+            Nonce::<T>::put(nonce + 1);
+
+            T::Assets::transfer(asset_id, &account, &Self::account_id(), amount, false)?;
+            Self::deposit_event(Event::Deposited(
+                nonce,
+                cctp_asset_id,
+                amount,
+                T::ChainDomain::get(),
+                did,
+                destination_domain,
+                destination_address,
+            ));
+
             Ok(())
         }
 
@@ -117,7 +158,26 @@ pub mod pallet {
             cctp_asset_id: CctpAssetOf<T>,
             asset_id: AssetOf<T>,
         ) -> DispatchResult {
+            let (did, _) = T::CallOrigin::ensure_origin(origin)?;
+            ensure!(
+                !Signer::<T>::get().is_none() && Signer::<T>::get().unwrap() == did,
+                Error::<T>::IncorrectSignerSetting
+            );
+            AssetMap::<T>::insert(cctp_asset_id, asset_id);
             Ok(())
+        }
+
+        #[pallet::weight(0)]
+        pub fn set_signer(origin: OriginFor<T>, did: DidOf<T>) -> DispatchResult {
+            ensure_root(origin)?;
+            Signer::<T>::put(did);
+            Ok(())
+        }
+    }
+
+    impl<T: Config> Pallet<T> {
+        fn account_id() -> AccountOf<T> {
+            <T as Config>::PalletId::get().into_sub_account_truncating(b"")
         }
     }
 }

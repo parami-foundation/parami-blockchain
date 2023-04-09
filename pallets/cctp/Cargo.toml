@@ -42,11 +42,12 @@ version = '2.1.1'
 [dependencies]
 sp-core = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24', default-features = false }
 sp-runtime= { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24', default-features = false }
+sp-std = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24', default-features = false }
 
 parami-did = { path = '../did', default-features = false }
 
 pallet-balances = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24', default-features = false }
-pallet-assets = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24' }
+pallet-assets = { git = 'https://github.com/paritytech/substrate', branch = 'polkadot-v0.9.24' , default-features = false }
 
 [dev-dependencies.sp-core]
 git = 'https://github.com/paritytech/substrate.git'
@@ -69,10 +70,10 @@ std = [
     'codec/std',
     'scale-info/std',
     'sp-core/std',
+    'sp-std/std',
     'sp-runtime/std',
 
     'parami-did/std',
-
     'pallet-balances/std',
     'pallet-assets/std',
 
