@@ -19,7 +19,10 @@ use sp_io::hashing::blake2_128;
 pub use sp_runtime::BuildStorage;
 use sp_runtime::{
     create_runtime_str, generic, impl_opaque_keys,
-    traits::{BlakeTwo256, Block as BlockT, Extrinsic, Keccak256, NumberFor, StaticLookup, Verify},
+    traits::{
+        BlakeTwo256, Block as BlockT, ConvertInto, Extrinsic, Keccak256, NumberFor, StaticLookup,
+        Verify,
+    },
     transaction_validity::{TransactionPriority, TransactionSource, TransactionValidity},
     ApplyExtrinsicResult, DispatchError, FixedPointNumber, Perbill, Percent, Permill, Perquintill,
     SaturatedConversion,
@@ -80,7 +83,7 @@ pub type SignedExtra = (
     frame_system::CheckEra<Runtime>,
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
-    pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    pallet_asset_tx_payment::ChargeAssetTxPayment<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -276,7 +279,6 @@ where
         account: AccountId,
         nonce: Index,
     ) -> Option<(Call, <UncheckedExtrinsic as Extrinsic>::SignaturePayload)> {
-        let tip = 0;
         // take the biggest period possible.
         let period = BlockHashCount::get()
             .checked_next_power_of_two()
@@ -295,7 +297,7 @@ where
             frame_system::CheckEra::<Runtime>::from(era),
             frame_system::CheckNonce::<Runtime>::from(nonce),
             frame_system::CheckWeight::<Runtime>::new(),
-            pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+            pallet_asset_tx_payment::ChargeAssetTxPayment::<Runtime>::from(0, None),
         );
         let raw_payload = SignedPayload::new(call, extra).ok()?;
         let signature = raw_payload.using_encoded(|payload| C::sign(payload, public))?;
@@ -418,6 +420,14 @@ impl pallet_transaction_payment::Config for Runtime {
     type FeeMultiplierUpdate =
         TargetedFeeAdjustment<Self, TargetBlockFullness, AdjustmentVariable, MinimumMultiplier>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
+}
+
+impl pallet_asset_tx_payment::Config for Runtime {
+    type Fungibles = Assets;
+    type OnChargeAssetTransaction = pallet_asset_tx_payment::FungiblesAdapter<
+        pallet_assets::BalanceToAssetBalance<Balances, Runtime, ConvertInto>,
+        (),
+    >;
 }
 
 parameter_types! {
@@ -944,8 +954,10 @@ construct_runtime!(
         // Monetary stuff.
         Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>} = 10,
         TransactionPayment: pallet_transaction_payment::{Pallet, Storage} = 11,
+
         Assets: pallet_assets::{Pallet, Call, Storage, Config<T>, Event<T>} = 12,
         Uniques: pallet_uniques::{Pallet, Storage, Event<T>} = 13,
+        AssetTxPayment: pallet_asset_tx_payment::{Pallet} = 14,
 
         // Collator support. The order of these 4 are important and shall not change.
         Aura: pallet_aura::{Pallet, Storage, Config<T>} = 23,
